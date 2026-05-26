@@ -562,6 +562,7 @@ model Order {
   items           OrderItem[]
   status_history  OrderStatusHistory[]
   escrow_holds    EscrowHold[]
+  disputes        Dispute[]
 
   @@index([buyer_user_id])
   @@index([order_number])
@@ -696,6 +697,7 @@ model EscrowHold {
   payment         Payment?  @relation(fields: [payment_id], references: [id])
   payout          Payout?   @relation(fields: [payout_id], references: [id])
   refund          Refund?   @relation(fields: [refund_id], references: [id])
+  dispute         Dispute?  @relation(fields: [dispute_id], references: [id])
 
   @@index([order_id])
   @@index([state])
@@ -859,6 +861,7 @@ model Refund {
 
   payment         Payment   @relation(fields: [payment_id], references: [id], onDelete: Restrict)
   escrow_holds    EscrowHold[]
+  dispute         Dispute?  @relation(fields: [dispute_id], references: [id])
 
   @@index([payment_id])
   @@index([order_id])
@@ -877,6 +880,154 @@ enum RefundStatus {
   PROCESSING
   COMPLETED
   FAILED
+}
+
+// ============================================================================
+// Disputes (Engineering_Spec §4.8)
+// Resolution LOGIC lives in packages/domain/src/dispute/ (P3 plan), with
+// 100% coverage per Build_Prompt §5.1. This slice lands the table shape +
+// enum values only.
+// ============================================================================
+
+model Dispute {
+  id              String          @id @default(cuid())
+  dispute_number  String          @unique
+  order_id        String
+  initiated_by_user_id String
+  initiated_at    DateTime        @default(now())
+
+  category        DisputeCategory
+  reason          DisputeReason
+  description     String
+
+  status          DisputeStatus   @default(OPEN)
+  assigned_to_admin_user_id String?
+  assigned_at     DateTime?
+
+  resolution      DisputeResolution?
+  resolution_amount Decimal?      @db.Decimal(10, 2)
+  resolution_notes String?
+  resolved_at     DateTime?
+  resolved_by_user_id String?
+
+  sla_due_at      DateTime
+  sla_breached    Boolean         @default(false)
+  escalated_at    DateTime?
+
+  buyer_response_at  DateTime?
+  seller_response_at DateTime?
+
+  is_chargeback                Boolean @default(false)
+  chargeback_provider_case_id  String?
+
+  created_at      DateTime        @default(now())
+  updated_at      DateTime        @updatedAt
+
+  order           Order           @relation(fields: [order_id], references: [id], onDelete: Restrict)
+  messages        DisputeMessage[]
+  evidence        DisputeEvidence[]
+  escrow_holds    EscrowHold[]
+  refunds         Refund[]
+
+  @@index([order_id])
+  @@index([status])
+  @@index([assigned_to_admin_user_id])
+  @@index([sla_due_at])
+  @@index([initiated_at])
+  @@map("disputes")
+}
+
+enum DisputeCategory {
+  NOT_RECEIVED
+  DAMAGED
+  WRONG_ITEM
+  COUNTERFEIT
+  QUALITY_ISSUE
+  IN_TRANSIT_DAMAGE
+  PAYMENT_ISSUE
+  FRAUD
+  OTHER
+}
+
+enum DisputeReason {
+  BUYER_INITIATED
+  SELLER_INITIATED
+  CHARGEBACK
+  FRAUD_DETECTED
+  SYSTEM_FLAGGED
+}
+
+enum DisputeStatus {
+  OPEN
+  IN_REVIEW
+  PENDING_BUYER
+  PENDING_SELLER
+  ESCALATED
+  RESOLVED_FAVOR_BUYER
+  RESOLVED_FAVOR_SELLER
+  RESOLVED_PARTIAL
+  RESOLVED_INSURANCE
+  CLOSED
+  WITHDRAWN
+}
+
+enum DisputeResolution {
+  FULL_REFUND_TO_BUYER
+  PARTIAL_REFUND_TO_BUYER
+  RELEASE_TO_SELLER
+  INSURANCE_PAYOUT
+  STORE_CREDIT
+  REPLACEMENT_SHIPPED
+}
+
+model DisputeMessage {
+  id              String                   @id @default(cuid())
+  dispute_id      String
+  author_user_id  String
+  author_type     DisputeMessageAuthorType
+  body            String
+  is_internal     Boolean                  @default(false)
+  created_at      DateTime                 @default(now())
+
+  dispute         Dispute                  @relation(fields: [dispute_id], references: [id], onDelete: Cascade)
+
+  @@index([dispute_id])
+  @@index([created_at])
+  @@map("dispute_messages")
+}
+
+enum DisputeMessageAuthorType {
+  BUYER
+  SELLER
+  ADMIN
+  SYSTEM
+}
+
+model DisputeEvidence {
+  id                  String              @id @default(cuid())
+  dispute_id          String
+  uploaded_by_user_id String
+  file_url            String
+  file_type           String
+  file_size_bytes     Int
+  description         String?
+  evidence_type       DisputeEvidenceType
+  created_at          DateTime            @default(now())
+
+  dispute             Dispute             @relation(fields: [dispute_id], references: [id], onDelete: Cascade)
+
+  @@index([dispute_id])
+  @@map("dispute_evidence")
+}
+
+enum DisputeEvidenceType {
+  PHOTO
+  VIDEO
+  DOCUMENT
+  CHAT_TRANSCRIPT
+  DELIVERY_PROOF
+  RECEIPT
+  OTHER
 }
 
 model ProductVariant {

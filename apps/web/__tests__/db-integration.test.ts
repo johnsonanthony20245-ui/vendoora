@@ -34,4 +34,9 @@ describe('apps/web → @vendoora/db', () => {
     const count = await prisma.escrowHold.count();
     expect(count).toBeGreaterThanOrEqual(0);
   });
+
+  it('Dispute model is generated and queryable', async () => {
+    const count = await prisma.dispute.count();
+    expect(count).toBeGreaterThanOrEqual(0);
+  });
 });
