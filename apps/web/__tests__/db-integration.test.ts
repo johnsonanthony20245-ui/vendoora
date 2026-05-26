@@ -19,4 +19,9 @@ describe('apps/web → @vendoora/db', () => {
     const count = await prisma.user.count();
     expect(count).toBeGreaterThanOrEqual(0);
   });
+
+  it('reads the seeded category catalog (>= 12 after seed)', async () => {
+    const count = await prisma.category.count();
+    expect(count).toBeGreaterThanOrEqual(12);
+  });
 });

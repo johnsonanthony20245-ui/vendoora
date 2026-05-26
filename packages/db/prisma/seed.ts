@@ -182,6 +182,33 @@ const ROLES: RoleDef[] = [
 ];
 
 // ----------------------------------------------------------------------------
+// Category catalog — 12 top-level Liberian-marketplace categories
+// ----------------------------------------------------------------------------
+
+interface CategoryDef {
+  name: string;
+  slug: string;
+  description: string;
+  icon_name: string;
+  display_order: number;
+}
+
+const CATEGORIES: CategoryDef[] = [
+  { name: 'Fashion',          slug: 'fashion',          description: 'Clothing, fabrics, accessories, footwear',                       icon_name: 'shirt',         display_order: 1 },
+  { name: 'Food & Drink',     slug: 'food-drink',       description: 'Foodstuffs, beverages, pantry, fresh produce',                   icon_name: 'utensils',      display_order: 2 },
+  { name: 'Beauty',           slug: 'beauty',           description: 'Cosmetics, hair care, skincare, fragrances',                     icon_name: 'sparkles',      display_order: 3 },
+  { name: 'Electronics',      slug: 'electronics',      description: 'TVs, audio, appliances, accessories',                            icon_name: 'tv',            display_order: 4 },
+  { name: 'Mobile & Tech',    slug: 'mobile-tech',      description: 'Phones, tablets, chargers, SIM cards, data bundles',             icon_name: 'smartphone',    display_order: 5 },
+  { name: 'Home & Garden',    slug: 'home-garden',      description: 'Furniture, decor, kitchenware, garden supplies',                 icon_name: 'home',          display_order: 6 },
+  { name: 'Children',         slug: 'children',         description: 'Kids clothing, toys, school supplies, baby goods',               icon_name: 'baby',          display_order: 7 },
+  { name: 'Arts & Crafts',    slug: 'arts-crafts',      description: 'Liberian art, traditional crafts, fabrics, handmade goods',      icon_name: 'palette',       display_order: 8 },
+  { name: 'Books',            slug: 'books',            description: 'Books, magazines, stationery, educational materials',            icon_name: 'book-open',     display_order: 9 },
+  { name: 'Pharmacy',         slug: 'pharmacy',         description: 'OTC medicines, vitamins, health products (regulated)',           icon_name: 'pill',          display_order: 10 },
+  { name: 'Tools & Hardware', slug: 'tools-hardware',   description: 'Hand tools, power tools, building materials',                    icon_name: 'wrench',        display_order: 11 },
+  { name: 'Other',            slug: 'other',            description: 'Everything else',                                                icon_name: 'package',       display_order: 12 },
+];
+
+// ----------------------------------------------------------------------------
 // Seed runner
 // ----------------------------------------------------------------------------
 
@@ -227,6 +254,27 @@ async function main() {
         data: perms.map((p) => ({ role_id: role.id, permission_id: p.id })),
       });
     }
+  }
+
+  console.log(`Seeding ${CATEGORIES.length} categories...`);
+  for (const c of CATEGORIES) {
+    await prisma.category.upsert({
+      where: { slug: c.slug },
+      update: {
+        name: c.name,
+        description: c.description,
+        icon_name: c.icon_name,
+        display_order: c.display_order,
+      },
+      create: {
+        name: c.name,
+        slug: c.slug,
+        description: c.description,
+        icon_name: c.icon_name,
+        display_order: c.display_order,
+        attributes_schema: {},
+      },
+    });
   }
 
   console.log('Seed complete.');

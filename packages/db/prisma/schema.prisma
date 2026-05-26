@@ -43,6 +43,11 @@ model User {
   user_roles          UserRole[]
   assigned_user_roles UserRole[] @relation("UserRoleAssignedBy")
 
+  // Sellers (slice 2)
+  seller              Seller?
+  seller_staff_member SellerStaff[] @relation("SellerStaffMember")
+  seller_staff_invited SellerStaff[] @relation("SellerStaffInviter")
+
   @@index([clerk_id])
   @@index([email])
   @@index([phone])
@@ -177,4 +182,296 @@ model FxRate {
   @@unique([from_currency, to_currency, effective_date])
   @@index([effective_date])
   @@map("fx_rates")
+}
+
+// ============================================================================
+// Sellers (Engineering_Spec §4.4)
+// ============================================================================
+
+model Seller {
+  id                   String       @id @default(cuid())
+  user_id              String       @unique
+  business_name        String
+  business_slug        String       @unique
+  business_description String?
+  business_logo_url    String?
+  business_banner_url  String?
+  business_email       String
+  business_phone       String
+  business_address     Json
+  business_type        BusinessType
+  tax_id               String?
+  registration_number  String?
+
+  kyc_tier              Int        @default(0)
+  kyc_status            KYCStatus  @default(NOT_STARTED)
+  kyc_tier_promoted_at  DateTime?
+  kyc_documents         Json?
+
+  saas_plan             SaasPlan   @default(STARTER)
+  saas_plan_started_at  DateTime?
+  saas_plan_renewed_at  DateTime?
+  saas_commission_rate  Float      @default(0.12)
+
+  payout_method         PayoutMethod   @default(MTN_MOMO)
+  payout_account_id     String?
+  payout_schedule       PayoutSchedule @default(WEEKLY)
+
+  is_featured           Boolean    @default(false)
+  feature_starts_at     DateTime?
+  feature_ends_at       DateTime?
+
+  total_orders          Int        @default(0)
+  total_gmv             Decimal    @default(0) @db.Decimal(15, 2)
+  total_disputes        Int        @default(0)
+  dispute_rate          Float      @default(0)
+  on_time_rate          Float      @default(100)
+  rating_average        Float?
+  rating_count          Int        @default(0)
+
+  is_suspended          Boolean    @default(false)
+  suspended_at          DateTime?
+  suspended_reason      String?
+
+  created_at            DateTime   @default(now())
+  updated_at            DateTime   @updatedAt
+  deleted_at            DateTime?
+
+  user                  User       @relation(fields: [user_id], references: [id], onDelete: Restrict)
+  staff_members         SellerStaff[]
+  products              Product[]
+
+  @@index([business_slug])
+  @@index([kyc_tier])
+  @@index([saas_plan])
+  @@index([is_suspended])
+  @@index([is_featured])
+  @@map("sellers")
+}
+
+enum BusinessType {
+  SOLE_PROPRIETOR
+  LIMITED_LIABILITY
+  CORPORATION
+  COOPERATIVE
+  INDIVIDUAL
+}
+
+enum KYCStatus {
+  NOT_STARTED
+  IN_REVIEW
+  APPROVED
+  REJECTED
+  EXPIRED
+}
+
+enum SaasPlan {
+  STARTER
+  GROWTH
+  PRO
+  ENTERPRISE
+}
+
+enum PayoutMethod {
+  MTN_MOMO
+  ORANGE_MONEY
+  BANK_TRANSFER
+}
+
+enum PayoutSchedule {
+  INSTANT
+  DAILY
+  WEEKLY
+  MONTHLY
+}
+
+model SellerStaff {
+  seller_id          String
+  user_id            String
+  role               SellerStaffRole
+  invited_by_user_id String
+  invited_at         DateTime @default(now())
+  accepted_at        DateTime?
+
+  seller             Seller   @relation(fields: [seller_id], references: [id], onDelete: Cascade)
+  user               User     @relation("SellerStaffMember", fields: [user_id], references: [id], onDelete: Cascade)
+  invited_by         User     @relation("SellerStaffInviter", fields: [invited_by_user_id], references: [id])
+
+  @@id([seller_id, user_id])
+  @@index([user_id])
+  @@map("seller_staff")
+}
+
+enum SellerStaffRole {
+  ADMIN
+  FULFILLMENT
+  SUPPORT
+  VIEWER
+}
+
+// ============================================================================
+// Catalog — base (Engineering_Spec §4.5)
+// May-2026 product extensions added in next migration.
+// ============================================================================
+
+model Category {
+  id                String    @id @default(cuid())
+  parent_id         String?
+  name              String
+  slug              String    @unique
+  description       String?
+  icon_name         String?
+  banner_url        String?
+  attributes_schema Json
+  display_order     Int       @default(0)
+  is_active         Boolean   @default(true)
+  is_featured       Boolean   @default(false)
+  created_at        DateTime  @default(now())
+  updated_at        DateTime  @updatedAt
+
+  parent            Category? @relation("CategoryHierarchy", fields: [parent_id], references: [id])
+  children          Category[] @relation("CategoryHierarchy")
+  products          Product[]
+
+  @@index([parent_id])
+  @@index([slug])
+  @@index([is_active])
+  @@map("categories")
+}
+
+model Product {
+  id                       String         @id @default(cuid())
+  seller_id                String
+  category_id              String
+  name                     String
+  slug                     String
+  description              String
+  short_description        String?
+  base_price               Decimal        @db.Decimal(10, 2)
+  currency                 String         @default("USD")
+  cost_price               Decimal?       @db.Decimal(10, 2)
+  weight_grams             Int?
+  dimensions               Json?
+  attributes               Json
+  tags                     String[]
+  has_variants             Boolean        @default(false)
+  status                   ProductStatus  @default(DRAFT)
+  moderation_status        ModerationStatus @default(PENDING)
+  inventory_tracking       Boolean        @default(true)
+  inventory_count          Int            @default(0)
+  inventory_low_threshold  Int            @default(5)
+  is_featured              Boolean        @default(false)
+  feature_ends_at          DateTime?
+  promoted_score           Float          @default(0)
+  view_count               Int            @default(0)
+  order_count              Int            @default(0)
+  rating_average           Float?
+  rating_count             Int            @default(0)
+  is_diaspora_eligible     Boolean        @default(true)
+  shipping_zones           String[]
+
+  // May-2026 product extensions (Polish_Phase_Addendum §1.16, Engineering_Spec §4.17)
+  condition                ProductCondition    @default(NEW)
+  condition_note           String?
+  warranty_terms           String?
+  warranty_duration_days   Int?
+  return_policy_type       ReturnPolicyType    @default(NO_RETURNS)
+  return_policy_terms      String?
+  return_window_days       Int?
+  authenticity_status      AuthenticityStatus  @default(UNCLAIMED)
+  authenticity_proof_urls  String[]
+  compare_at_price         Decimal?            @db.Decimal(10, 2)
+  is_buyer_protection_eligible Boolean         @default(true)
+
+  created_at               DateTime       @default(now())
+  updated_at               DateTime       @updatedAt
+  published_at             DateTime?
+  deleted_at               DateTime?
+
+  seller                   Seller         @relation(fields: [seller_id], references: [id], onDelete: Restrict)
+  category                 Category       @relation(fields: [category_id], references: [id], onDelete: Restrict)
+  variants                 ProductVariant[]
+  images                   ProductImage[]
+
+  @@unique([seller_id, slug])
+  @@index([seller_id])
+  @@index([category_id])
+  @@index([status])
+  @@index([moderation_status])
+  @@index([is_featured])
+  @@index([deleted_at])
+  @@map("products")
+}
+
+enum ProductStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+  OUT_OF_STOCK
+}
+
+enum ModerationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  FLAGGED
+}
+
+enum ProductCondition {
+  NEW
+  LIKE_NEW
+  USED_GOOD
+  USED_FAIR
+  REFURBISHED
+  FOR_PARTS
+}
+
+enum AuthenticityStatus {
+  PLATFORM_VERIFIED
+  PROOF_PROVIDED
+  CLAIMED
+  UNCLAIMED
+}
+
+enum ReturnPolicyType {
+  NO_RETURNS
+  STORE_CREDIT_ONLY
+  REFUND_WITHIN_WINDOW
+  CASE_BY_CASE
+}
+
+model ProductVariant {
+  id              String   @id @default(cuid())
+  product_id      String
+  sku             String?
+  name            String
+  attributes      Json
+  price_override  Decimal? @db.Decimal(10, 2)
+  inventory_count Int      @default(0)
+  is_default      Boolean  @default(false)
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  product         Product  @relation(fields: [product_id], references: [id], onDelete: Cascade)
+
+  @@unique([product_id, sku])
+  @@index([product_id])
+  @@map("product_variants")
+}
+
+model ProductImage {
+  id                       String   @id @default(cuid())
+  product_id               String
+  url                      String
+  alt_text                 String?
+  display_order            Int      @default(0)
+  is_primary               Boolean  @default(false)
+  photographer_credit      String?
+  is_vendoora_photographed Boolean  @default(false)
+  created_at               DateTime @default(now())
+
+  product                  Product  @relation(fields: [product_id], references: [id], onDelete: Cascade)
+
+  @@index([product_id])
+  @@map("product_images")
 }
