@@ -49,4 +49,13 @@ describe('apps/web → @vendoora/db', () => {
     const count = await prisma.deliveryZone.count();
     expect(count).toBeGreaterThanOrEqual(8);
   });
+
+  it('Diaspora models (Recipient, GiftBundle, GroupGift) are generated and queryable', async () => {
+    const r = await prisma.recipient.count();
+    const b = await prisma.giftBundle.count();
+    const g = await prisma.groupGift.count();
+    expect(r).toBeGreaterThanOrEqual(0);
+    expect(b).toBeGreaterThanOrEqual(0);
+    expect(g).toBeGreaterThanOrEqual(0);
+  });
 });

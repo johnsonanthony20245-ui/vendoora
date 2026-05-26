@@ -55,6 +55,12 @@ model User {
   // Drivers (slice 5)
   driver              Driver?
 
+  // Diaspora (slice 6)
+  recipients          Recipient[]
+  group_gift_contributions GroupGiftContributor[]
+  scheduled_gifts     ScheduledGift[]
+  initiated_group_gifts GroupGift[] @relation("GroupGiftInitiator")
+
   @@index([clerk_id])
   @@index([email])
   @@index([phone])
@@ -403,6 +409,7 @@ model Product {
   variants                 ProductVariant[]
   images                   ProductImage[]
   order_items              OrderItem[]
+  bundle_items             BundleItem[]
 
   @@unique([seller_id, slug])
   @@index([seller_id])
@@ -567,6 +574,8 @@ model Order {
   escrow_holds    EscrowHold[]
   disputes        Dispute[]
   deliveries      Delivery[]
+  recipient       Recipient? @relation(fields: [recipient_id], references: [id])
+  group_gift      GroupGift? @relation(fields: [group_gift_id], references: [id])
 
   @@index([buyer_user_id])
   @@index([order_number])
@@ -1263,6 +1272,193 @@ model DeliveryZone {
 
   @@index([is_active])
   @@map("delivery_zones")
+}
+
+// ============================================================================
+// Diaspora (Engineering_Spec §4.10)
+// Group-gift pool logic + RRULE recurrence worker live in apps/worker (P5).
+// ============================================================================
+
+model Recipient {
+  id              String    @id @default(cuid())
+  sender_user_id  String
+  name            String
+  relationship    String?
+  phone           String
+  phone_country_code String @default("+231")
+  address_line1   String
+  address_line2   String?
+  city            String
+  county          String?
+  country         String    @default("Liberia")
+  landmark        String?
+  delivery_zone   String?
+  is_primary      Boolean   @default(false)
+  order_count     Int       @default(0)
+  last_order_at   DateTime?
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
+  deleted_at      DateTime?
+
+  sender          User      @relation(fields: [sender_user_id], references: [id], onDelete: Cascade)
+  orders          Order[]
+  group_gifts    GroupGift[]
+  scheduled_gifts ScheduledGift[]
+
+  @@index([sender_user_id])
+  @@index([phone])
+  @@map("recipients")
+}
+
+model GiftBundle {
+  id              String    @id @default(cuid())
+  slug            String    @unique
+  name            String
+  description     String
+  occasion        BundleOccasion
+  hero_image_url  String
+  price           Decimal   @db.Decimal(10, 2)
+  currency        String    @default("USD")
+  contents_summary String
+  is_customizable Boolean   @default(false)
+  is_active       Boolean   @default(true)
+  is_featured     Boolean   @default(false)
+  display_order   Int       @default(0)
+  created_by_user_id String
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
+
+  items           BundleItem[]
+  group_gifts    GroupGift[]
+  scheduled_gifts ScheduledGift[]
+
+  @@index([occasion])
+  @@index([is_active])
+  @@index([is_featured])
+  @@map("gift_bundles")
+}
+
+enum BundleOccasion {
+  BIRTHDAY
+  CHRISTMAS
+  EASTER
+  RAMADAN
+  GRADUATION
+  WEDDING
+  NEW_BABY
+  EVERYDAY_ESSENTIALS
+  MONTHLY_BOX
+  CONDOLENCES
+  OTHER
+}
+
+model BundleItem {
+  id              String    @id @default(cuid())
+  bundle_id       String
+  product_id      String
+  variant_id      String?
+  quantity        Int       @default(1)
+  is_substitutable Boolean  @default(false)
+  display_order   Int       @default(0)
+
+  bundle          GiftBundle @relation(fields: [bundle_id], references: [id], onDelete: Cascade)
+  product         Product    @relation(fields: [product_id], references: [id], onDelete: Restrict)
+
+  @@index([bundle_id])
+  @@map("bundle_items")
+}
+
+model GroupGift {
+  id              String    @id @default(cuid())
+  group_gift_code String    @unique
+  initiator_user_id String
+  recipient_id    String
+  bundle_id       String?
+  target_amount   Decimal   @db.Decimal(10, 2)
+  currency        String    @default("USD")
+  collected_amount Decimal  @default(0) @db.Decimal(10, 2)
+  contributor_count Int     @default(1)
+  deadline_at     DateTime
+  status          GroupGiftStatus @default(OPEN)
+  completed_order_id String?
+  message_from_group String?
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
+  completed_at    DateTime?
+  cancelled_at    DateTime?
+
+  initiator       User      @relation("GroupGiftInitiator", fields: [initiator_user_id], references: [id], onDelete: Restrict)
+  recipient       Recipient @relation(fields: [recipient_id], references: [id], onDelete: Restrict)
+  bundle          GiftBundle? @relation(fields: [bundle_id], references: [id])
+  contributors    GroupGiftContributor[]
+  orders          Order[]
+
+  @@index([group_gift_code])
+  @@index([initiator_user_id])
+  @@index([status])
+  @@index([deadline_at])
+  @@map("group_gifts")
+}
+
+enum GroupGiftStatus {
+  OPEN
+  COMPLETED
+  EXPIRED
+  CANCELLED
+  REFUNDED
+}
+
+model GroupGiftContributor {
+  id              String    @id @default(cuid())
+  group_gift_id   String
+  user_id         String
+  amount          Decimal   @db.Decimal(10, 2)
+  currency        String
+  message         String?
+  payment_id      String?
+  contributed_at  DateTime  @default(now())
+
+  group_gift      GroupGift @relation(fields: [group_gift_id], references: [id], onDelete: Cascade)
+  user            User      @relation(fields: [user_id], references: [id], onDelete: Restrict)
+
+  @@unique([group_gift_id, user_id])
+  @@index([user_id])
+  @@map("group_gift_contributors")
+}
+
+model ScheduledGift {
+  id              String    @id @default(cuid())
+  sender_user_id  String
+  recipient_id    String
+  bundle_id       String?
+  product_id      String?
+  variant_id      String?
+  schedule_type   ScheduleType
+  fire_date       DateTime?
+  recurrence_rule String?
+  payment_method_token String
+  is_active       Boolean   @default(true)
+  last_fired_at   DateTime?
+  next_fire_at    DateTime?
+  fire_count      Int       @default(0)
+  max_fires       Int?
+  personal_message String?
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
+
+  sender          User      @relation(fields: [sender_user_id], references: [id], onDelete: Cascade)
+  recipient       Recipient @relation(fields: [recipient_id], references: [id], onDelete: Restrict)
+  bundle          GiftBundle? @relation(fields: [bundle_id], references: [id])
+
+  @@index([sender_user_id])
+  @@index([is_active])
+  @@index([next_fire_at])
+  @@map("scheduled_gifts")
+}
+
+enum ScheduleType {
+  ONE_TIME
+  RECURRING
 }
 
 model ProductVariant {
