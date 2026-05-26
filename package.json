@@ -12,7 +12,12 @@
     "test": "turbo run test",
     "lint": "turbo run lint",
     "type-check": "turbo run type-check",
-    "dev": "turbo run dev --parallel"
+    "dev": "turbo run dev --parallel",
+    "db:up": "docker compose -f infra/docker/docker-compose.yml up -d",
+    "db:down": "docker compose -f infra/docker/docker-compose.yml down",
+    "db:logs": "docker compose -f infra/docker/docker-compose.yml logs -f postgres",
+    "db:reset": "docker compose -f infra/docker/docker-compose.yml down -v && pnpm db:up",
+    "db:seed": "pnpm -F @vendoora/db seed"
   },
   "devDependencies": {
     "turbo": "^2.3.0",

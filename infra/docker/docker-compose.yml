@@ -1,0 +1,26 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: vendoora-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: vendoora
+      POSTGRES_PASSWORD: vendoora_dev_password
+      POSTGRES_DB: vendoora_dev
+    ports:
+      # Host port 5434 (not 5432) because Windows users often have a
+      # system PostgreSQL service bound to 5432; Docker Desktop's WSL
+      # relay can hold 5433. Container internal port stays 5432.
+      - "5434:5432"
+    volumes:
+      - vendoora-postgres-data:/var/lib/postgresql/data
+      - ./init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vendoora -d vendoora_dev"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  vendoora-postgres-data:
+    name: vendoora-postgres-data

@@ -1,0 +1,180 @@
+// Vendoora — database schema.
+// Source of truth: this file. Engineering_Spec §4 documents the design;
+// this file is the implementation. Discrepancies are bugs (Build_Prompt §12.1).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================================
+// Identity (Engineering_Spec §4.2)
+// Sessions and OAuth links are owned by Clerk (Engineering_Spec §3.1,
+// Build_Prompt §10.2) and are not mirrored here.
+// ============================================================================
+
+model User {
+  id                  String    @id @default(cuid())
+  clerk_id            String    @unique
+  email               String    @unique
+  phone               String?   @unique
+  phone_country_code  String?
+  full_name           String
+  display_name        String?
+  avatar_url          String?
+  preferred_currency  String    @default("USD")
+  preferred_language  String    @default("en")
+  timezone            String    @default("UTC")
+  is_email_verified   Boolean   @default(false)
+  is_phone_verified   Boolean   @default(false)
+  has_2fa_enabled     Boolean   @default(false)
+  account_status      UserAccountStatus @default(ACTIVE)
+  last_login_at       DateTime?
+  last_login_ip       String?
+  trust_score         Float     @default(50.0)
+  created_at          DateTime  @default(now())
+  updated_at          DateTime  @updatedAt
+  deleted_at          DateTime?
+
+  user_roles          UserRole[]
+  assigned_user_roles UserRole[] @relation("UserRoleAssignedBy")
+
+  @@index([clerk_id])
+  @@index([email])
+  @@index([phone])
+  @@index([account_status])
+  @@index([trust_score])
+  @@index([deleted_at])
+  @@map("users")
+}
+
+enum UserAccountStatus {
+  ACTIVE
+  SUSPENDED
+  PENDING_VERIFICATION
+  CLOSED
+}
+
+// ============================================================================
+// RBAC (Engineering_Spec §4.3)
+// ============================================================================
+
+model Permission {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  category    String
+  description String
+  is_system   Boolean  @default(true)
+  created_at  DateTime @default(now())
+
+  role_permissions RolePermission[]
+
+  @@index([category])
+  @@map("permissions")
+}
+
+model Role {
+  id              String   @id @default(cuid())
+  name            String   @unique
+  display_name    String
+  description     String
+  is_system_role  Boolean  @default(false)
+  created_by_user_id String?
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  role_permissions RolePermission[]
+  user_roles       UserRole[]
+
+  @@index([is_system_role])
+  @@map("roles")
+}
+
+model RolePermission {
+  role_id       String
+  permission_id String
+  granted_at    DateTime @default(now())
+
+  role       Role       @relation(fields: [role_id], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permission_id], references: [id], onDelete: Cascade)
+
+  @@id([role_id, permission_id])
+  @@index([permission_id])
+  @@map("role_permissions")
+}
+
+model UserRole {
+  user_id             String
+  role_id             String
+  assigned_at         DateTime  @default(now())
+  assigned_by_user_id String?
+  expires_at          DateTime?
+
+  user        User  @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  role        Role  @relation(fields: [role_id], references: [id], onDelete: Cascade)
+  assigned_by User? @relation("UserRoleAssignedBy", fields: [assigned_by_user_id], references: [id])
+
+  @@id([user_id, role_id])
+  @@index([role_id])
+  @@index([expires_at])
+  @@map("user_roles")
+}
+
+// ============================================================================
+// Operations — cross-cutting (Engineering_Spec §4.18, §4.19)
+// ============================================================================
+
+model AuditLog {
+  id                String   @id @default(cuid())
+  actor_user_id     String?
+  actor_system      Boolean  @default(false)
+  target_user_id    String?
+  action            String
+  resource_type     String?
+  resource_id       String?
+  before_state      Json?
+  after_state       Json?
+  ip_address        String?
+  user_agent        String?
+  metadata          Json?
+  created_at        DateTime @default(now())
+
+  @@index([actor_user_id, created_at])
+  @@index([resource_type, resource_id])
+  @@index([action])
+  @@index([created_at])
+  @@map("audit_log")
+}
+
+model FeatureFlag {
+  id              String   @id @default(cuid())
+  name            String   @unique
+  description     String?
+  is_enabled      Boolean  @default(false)
+  rollout_percent Int      @default(0)
+  audience        String?
+  metadata        Json?
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  @@map("feature_flags")
+}
+
+model FxRate {
+  id              String   @id @default(cuid())
+  from_currency   String
+  to_currency     String
+  rate            Decimal  @db.Decimal(15, 8)
+  source          String   @default("CBL")
+  fetched_at      DateTime @default(now())
+  effective_date  DateTime @db.Date
+  is_active       Boolean  @default(true)
+
+  @@unique([from_currency, to_currency, effective_date])
+  @@index([effective_date])
+  @@map("fx_rates")
+}
