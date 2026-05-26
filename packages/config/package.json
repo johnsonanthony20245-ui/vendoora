@@ -1,0 +1,20 @@
+{
+  "name": "@vendoora/config",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./eslint": "./eslint/index.mjs",
+    "./prettier": "./prettier/index.mjs",
+    "./typescript": "./typescript/base.json"
+  },
+  "dependencies": {
+    "@eslint/js": "^9.15.0",
+    "typescript-eslint": "^8.15.0",
+    "prettier": "^3.4.0"
+  },
+  "peerDependencies": {
+    "eslint": "^9.15.0",
+    "typescript": "^5.6.3"
+  }
+}
