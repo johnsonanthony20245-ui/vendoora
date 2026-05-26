@@ -1,5 +1,6 @@
 import { BRAND_NAME } from '@vendoora/types';
 import { prisma } from '@vendoora/db';
+import { ProductCard, type ProductCardData } from '../components/ProductCard';
 
 // SSR per request for now. Build_Prompt §9.7 wants ISR (`revalidate = 60`)
 // for catalog pages, but ISR generates this page at build time and requires
@@ -10,11 +11,35 @@ export const dynamic = 'force-dynamic';
 
 export default async function HomePage() {
   // Pull active categories straight from the seeded DB. RSC server-side query;
-  // no client-side fetch. Cached for 60s per ISR convention.
-  const categories = await prisma.category.findMany({
-    where: { is_active: true },
-    orderBy: { display_order: 'asc' },
-  });
+  // no client-side fetch.
+  const [categories, justListed] = await Promise.all([
+    prisma.category.findMany({
+      where: { is_active: true },
+      orderBy: { display_order: 'asc' },
+    }),
+    // "Just listed today" — 6 newest published products per
+    // Polish_Phase_Addendum §2A.5 Liberia homepage improvements.
+    prisma.product.findMany({
+      where: { status: 'PUBLISHED', moderation_status: 'APPROVED', deleted_at: null },
+      orderBy: { created_at: 'desc' },
+      take: 6,
+      include: {
+        seller: { select: { business_slug: true, business_name: true, kyc_tier: true } },
+        images: { where: { is_primary: true }, take: 1, select: { url: true } },
+      },
+    }),
+  ]);
+
+  const justListedCards: ProductCardData[] = justListed.map((p) => ({
+    id: p.id,
+    slug: p.slug,
+    name: p.name,
+    base_price: p.base_price.toString(),
+    compare_at_price: p.compare_at_price ? p.compare_at_price.toString() : null,
+    condition: p.condition,
+    seller: p.seller,
+    primary_image_url: p.images[0]?.url ?? null,
+  }));
 
   return (
     <main>
@@ -87,6 +112,35 @@ export default async function HomePage() {
           </div>
         </div>
       </section>
+
+      {/* ============ JUST LISTED TODAY ============ */}
+      {justListedCards.length > 0 && (
+        <section className="border-b border-neutral-200 bg-neutral-0 px-6 py-12 md:py-16">
+          <div className="mx-auto max-w-7xl">
+            <div className="flex items-end justify-between">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span
+                    className="inline-block h-2 w-2 animate-pulse rounded-full bg-emerald-500"
+                    aria-hidden
+                  />
+                  <p className="text-xs font-bold uppercase tracking-widest text-emerald-700">
+                    Just listed today
+                  </p>
+                </div>
+                <h2 className="mt-1 text-2xl font-bold text-neutral-900 md:text-3xl">
+                  Fresh from verified sellers
+                </h2>
+              </div>
+            </div>
+            <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-6">
+              {justListedCards.map((p) => (
+                <ProductCard key={p.id} product={p} compact />
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* ============ CATEGORIES (from DB) ============ */}
       <section id="categories" className="px-6 py-16 md:py-24">

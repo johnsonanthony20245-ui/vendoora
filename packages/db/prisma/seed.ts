@@ -232,6 +232,139 @@ const CATEGORIES: CategoryDef[] = [
 ];
 
 // ----------------------------------------------------------------------------
+// Sample sellers + products for dev / pilot demo
+// Picsum.photos URLs are deterministic by seed; replace with R2 URLs when
+// Cloudflare Images wiring lands (P1.3.7).
+// ----------------------------------------------------------------------------
+
+interface SampleSellerDef {
+  clerk_id: string;
+  email: string;
+  full_name: string;
+  business_slug: string;
+  business_name: string;
+  business_email: string;
+  business_phone: string;
+  business_address: Record<string, string>;
+  business_type:
+    | 'SOLE_PROPRIETOR'
+    | 'LIMITED_LIABILITY'
+    | 'CORPORATION'
+    | 'COOPERATIVE'
+    | 'INDIVIDUAL';
+  kyc_tier: number;
+  kyc_status: 'NOT_STARTED' | 'IN_REVIEW' | 'APPROVED' | 'REJECTED' | 'EXPIRED';
+  saas_plan: 'STARTER' | 'GROWTH' | 'PRO' | 'ENTERPRISE';
+  rating_average: number;
+  rating_count: number;
+  total_orders: number;
+}
+
+const SAMPLE_SELLERS: SampleSellerDef[] = [
+  {
+    clerk_id: 'seed_clerk_konah',
+    email: 'konah@konah-boutique.lr',
+    full_name: 'Konah Tubman',
+    business_slug: 'konah-boutique',
+    business_name: 'Konah Boutique',
+    business_email: 'hello@konah-boutique.lr',
+    business_phone: '+231880100001',
+    business_address: { street: '12 Tubman Blvd', city: 'Monrovia', county: 'Montserrado', country: 'Liberia' },
+    business_type: 'SOLE_PROPRIETOR',
+    kyc_tier: 3,
+    kyc_status: 'APPROVED',
+    saas_plan: 'GROWTH',
+    rating_average: 4.8,
+    rating_count: 142,
+    total_orders: 287,
+  },
+  {
+    clerk_id: 'seed_clerk_sundayma',
+    email: 'sundayma@sundayma-foods.lr',
+    full_name: 'Sundayma Williams',
+    business_slug: 'sundayma-foods',
+    business_name: 'Sundayma Foods',
+    business_email: 'orders@sundayma-foods.lr',
+    business_phone: '+231880100002',
+    business_address: { street: '47 Old Road', city: 'Monrovia', county: 'Montserrado', country: 'Liberia' },
+    business_type: 'LIMITED_LIABILITY',
+    kyc_tier: 4,
+    kyc_status: 'APPROVED',
+    saas_plan: 'PRO',
+    rating_average: 4.9,
+    rating_count: 318,
+    total_orders: 691,
+  },
+  {
+    clerk_id: 'seed_clerk_mariama',
+    email: 'mariama@mariamas-crafts.lr',
+    full_name: "Mariama Kollie",
+    business_slug: 'mariamas-crafts',
+    business_name: "Mariama's Liberian Crafts",
+    business_email: 'mariama@mariamas-crafts.lr',
+    business_phone: '+231880100003',
+    business_address: { street: '88 Sinkor 4th St', city: 'Monrovia', county: 'Montserrado', country: 'Liberia' },
+    business_type: 'SOLE_PROPRIETOR',
+    kyc_tier: 3,
+    kyc_status: 'APPROVED',
+    saas_plan: 'GROWTH',
+    rating_average: 4.7,
+    rating_count: 89,
+    total_orders: 167,
+  },
+];
+
+interface SampleProductDef {
+  seller_slug: string;        // looked up against SAMPLE_SELLERS
+  category_slug: string;      // looked up against CATEGORIES
+  name: string;
+  slug: string;
+  description: string;
+  short_description: string;
+  base_price: number;
+  compare_at_price?: number;
+  condition: 'NEW' | 'LIKE_NEW' | 'USED_GOOD' | 'USED_FAIR' | 'REFURBISHED' | 'FOR_PARTS';
+  authenticity_status?: 'UNCLAIMED' | 'CLAIMED' | 'PROOF_PROVIDED' | 'PLATFORM_VERIFIED';
+  tags: string[];
+  image_count: number;
+}
+
+// 18 products distributed across 8 of 12 categories.
+const SAMPLE_PRODUCTS: SampleProductDef[] = [
+  // Fashion (4) — Konah Boutique
+  { seller_slug: 'konah-boutique', category_slug: 'fashion', name: 'Vlisco Wax Print Wrapper — 6 yards', slug: 'vlisco-wax-print-6yd', description: 'Authentic Dutch Vlisco wax-print fabric, 6 yards. Earth Red colorway, perfect for traditional wrappers, suits, and statement pieces.', short_description: 'Authentic Vlisco, 6yd, Earth Red', base_price: 65.0, compare_at_price: 80.0, condition: 'NEW', authenticity_status: 'PROOF_PROVIDED', tags: ['vlisco', 'wax-print', 'fabric'], image_count: 3 },
+  { seller_slug: 'konah-boutique', category_slug: 'fashion', name: 'Ankara Print Maxi Dress', slug: 'ankara-maxi-dress', description: 'Hand-tailored Ankara maxi dress, available in M/L/XL. Bold geometric pattern, fully lined.', short_description: 'Hand-tailored, sizes M/L/XL', base_price: 48.0, condition: 'NEW', tags: ['ankara', 'dress'], image_count: 2 },
+  { seller_slug: 'konah-boutique', category_slug: 'fashion', name: "Men's Embroidered Senegalese Boubou", slug: 'senegalese-boubou', description: 'Premium Senegalese boubou with hand-embroidered neckline. Pure cotton, breathable for Liberian climate.', short_description: 'Hand-embroidered cotton boubou', base_price: 85.0, condition: 'NEW', tags: ['boubou', 'menswear'], image_count: 2 },
+  { seller_slug: 'konah-boutique', category_slug: 'fashion', name: 'Leather Sandals — Handmade', slug: 'leather-sandals', description: 'Locally handmade leather sandals. Tan and dark brown available.', short_description: 'Locally handmade, sizes 36-43', base_price: 32.0, condition: 'NEW', tags: ['leather', 'sandals'], image_count: 2 },
+
+  // Food & Drink (4) — Sundayma Foods
+  { seller_slug: 'sundayma-foods', category_slug: 'food-drink', name: 'Country Rice — 25kg bag', slug: 'country-rice-25kg', description: 'Premium Liberian country rice, 25kg. Locally grown in Lofa County. Cooks fluffy and aromatic.', short_description: 'Lofa-grown, 25kg', base_price: 42.0, condition: 'NEW', authenticity_status: 'PLATFORM_VERIFIED', tags: ['rice', 'staple'], image_count: 2 },
+  { seller_slug: 'sundayma-foods', category_slug: 'food-drink', name: 'Palm Butter Paste — 500g', slug: 'palm-butter-500g', description: 'Traditional palm butter paste, slow-cooked from fresh palm nuts. Ready for soup. 500g jar.', short_description: 'Slow-cooked, traditional', base_price: 14.0, condition: 'NEW', tags: ['palm-butter', 'cooking'], image_count: 2 },
+  { seller_slug: 'sundayma-foods', category_slug: 'food-drink', name: 'Bitterball & Eggplant Mix — 1kg fresh', slug: 'bitterball-eggplant-1kg', description: 'Fresh bitterball and African eggplant from local farms. 1kg combo, vacuum-packed for shipping.', short_description: '1kg fresh combo, vacuum-packed', base_price: 9.0, condition: 'NEW', tags: ['vegetables', 'fresh'], image_count: 2 },
+  { seller_slug: 'sundayma-foods', category_slug: 'food-drink', name: 'Liberian Pepper Sauce — 250ml', slug: 'liberian-pepper-sauce-250ml', description: 'Homemade Liberian pepper sauce — habanero, ginger, garlic. Hot. 250ml glass jar.', short_description: 'Habanero-ginger-garlic, 250ml', base_price: 7.0, condition: 'NEW', tags: ['hot-sauce', 'pepper'], image_count: 1 },
+
+  // Beauty (2) — Konah
+  { seller_slug: 'konah-boutique', category_slug: 'beauty', name: 'Shea Butter — Raw, Unrefined 500g', slug: 'shea-butter-500g', description: 'Raw, unrefined shea butter from Ghanaian women cooperatives. 500g, no additives.', short_description: 'Raw, unrefined, 500g', base_price: 18.0, condition: 'NEW', authenticity_status: 'CLAIMED', tags: ['shea', 'skincare'], image_count: 2 },
+  { seller_slug: 'konah-boutique', category_slug: 'beauty', name: 'Black Soap Bar — Hand-cut', slug: 'black-soap-bar', description: 'Traditional African black soap, hand-cut, 250g bar. Plantain ash + cocoa pod ash + shea butter base.', short_description: 'Hand-cut 250g bar', base_price: 9.0, condition: 'NEW', tags: ['black-soap', 'skincare'], image_count: 1 },
+
+  // Electronics (2) — Sundayma (operates a mini-mart side)
+  { seller_slug: 'sundayma-foods', category_slug: 'electronics', name: 'Solar-Powered LED Lantern', slug: 'solar-led-lantern', description: 'Reliable solar LED lantern with USB phone-charging port. 8-hour battery, weather-resistant.', short_description: 'Solar + USB charge port, 8hr battery', base_price: 28.0, condition: 'NEW', tags: ['solar', 'lantern'], image_count: 2 },
+  { seller_slug: 'sundayma-foods', category_slug: 'electronics', name: 'Power Bank — 20000mAh', slug: 'power-bank-20000', description: 'High-capacity 20000mAh power bank. Two USB-A + one USB-C. Charges phones 5+ times.', short_description: '20000mAh, dual-USB + USB-C', base_price: 22.0, condition: 'NEW', tags: ['power-bank', 'mobile'], image_count: 1 },
+
+  // Arts & Crafts (4) — Mariama
+  { seller_slug: 'mariamas-crafts', category_slug: 'arts-crafts', name: 'Hand-Woven Country Cloth Throw', slug: 'country-cloth-throw', description: 'Traditional Liberian country cloth, hand-woven on a loom in Bong County. Approx 5ft x 7ft.', short_description: 'Bong County hand-woven, ~5ft x 7ft', base_price: 95.0, condition: 'NEW', authenticity_status: 'PLATFORM_VERIFIED', tags: ['country-cloth', 'handmade'], image_count: 3 },
+  { seller_slug: 'mariamas-crafts', category_slug: 'arts-crafts', name: 'Carved Wooden Mask — Dan Tribe', slug: 'dan-tribe-mask', description: "Traditional Dan tribe carved wooden ceremonial mask. Approximately 14 inches tall. Each piece is unique.", short_description: '14-inch traditional Dan mask', base_price: 145.0, condition: 'NEW', authenticity_status: 'PROOF_PROVIDED', tags: ['mask', 'sculpture'], image_count: 3 },
+  { seller_slug: 'mariamas-crafts', category_slug: 'arts-crafts', name: 'Beaded Necklace — Wax Print Beads', slug: 'beaded-necklace-wax', description: 'Hand-strung necklace using wax-print fabric beads. Adjustable length 18-22 inches.', short_description: 'Hand-strung, adjustable 18-22"', base_price: 22.0, condition: 'NEW', tags: ['jewelry', 'beads'], image_count: 2 },
+  { seller_slug: 'mariamas-crafts', category_slug: 'arts-crafts', name: 'Bamboo Basket — Large', slug: 'bamboo-basket-large', description: 'Hand-woven bamboo storage basket with lid. Large size, approx 16in diameter.', short_description: 'Hand-woven, 16in diameter', base_price: 38.0, condition: 'LIKE_NEW', tags: ['basket', 'home'], image_count: 2 },
+
+  // Home & Garden (1) — Mariama
+  { seller_slug: 'mariamas-crafts', category_slug: 'home-garden', name: 'Clay Cooking Pot — Medium', slug: 'clay-cooking-pot-medium', description: 'Traditional clay cooking pot, fire-hardened, medium size suitable for soups and stews.', short_description: 'Fire-hardened, traditional', base_price: 32.0, condition: 'NEW', tags: ['clay-pot', 'cookware'], image_count: 1 },
+
+  // Children (1) — Konah
+  { seller_slug: 'konah-boutique', category_slug: 'children', name: "Kids' Ankara Shirt + Shorts Set", slug: 'kids-ankara-set', description: 'Matching Ankara shirt and shorts set for kids. Sizes 2T-8. Bold print.', short_description: 'Matching set, sizes 2T-8', base_price: 26.0, condition: 'NEW', tags: ['kids', 'ankara'], image_count: 2 },
+];
+
+// ----------------------------------------------------------------------------
 // Seed runner
 // ----------------------------------------------------------------------------
 
@@ -320,6 +453,117 @@ async function main() {
         is_active: z.is_active,
       },
     });
+  }
+
+  console.log(`Seeding ${SAMPLE_SELLERS.length} sample sellers...`);
+  const sellersBySlug = new Map<string, { id: string }>();
+  for (const s of SAMPLE_SELLERS) {
+    const user = await prisma.user.upsert({
+      where: { clerk_id: s.clerk_id },
+      update: { email: s.email, full_name: s.full_name },
+      create: {
+        clerk_id: s.clerk_id,
+        email: s.email,
+        full_name: s.full_name,
+        is_email_verified: true,
+        account_status: 'ACTIVE',
+      },
+    });
+    const seller = await prisma.seller.upsert({
+      where: { business_slug: s.business_slug },
+      update: {
+        business_name: s.business_name,
+        business_email: s.business_email,
+        business_phone: s.business_phone,
+        business_address: s.business_address,
+        business_type: s.business_type,
+        kyc_tier: s.kyc_tier,
+        kyc_status: s.kyc_status,
+        saas_plan: s.saas_plan,
+        rating_average: s.rating_average,
+        rating_count: s.rating_count,
+        total_orders: s.total_orders,
+      },
+      create: {
+        user_id: user.id,
+        business_name: s.business_name,
+        business_slug: s.business_slug,
+        business_email: s.business_email,
+        business_phone: s.business_phone,
+        business_address: s.business_address,
+        business_type: s.business_type,
+        kyc_tier: s.kyc_tier,
+        kyc_status: s.kyc_status,
+        saas_plan: s.saas_plan,
+        rating_average: s.rating_average,
+        rating_count: s.rating_count,
+        total_orders: s.total_orders,
+      },
+    });
+    sellersBySlug.set(s.business_slug, { id: seller.id });
+  }
+
+  console.log(`Seeding ${SAMPLE_PRODUCTS.length} sample products...`);
+  const categoriesBySlug = new Map<string, { id: string }>();
+  for (const c of CATEGORIES) {
+    const row = await prisma.category.findUnique({ where: { slug: c.slug } });
+    if (row) categoriesBySlug.set(c.slug, { id: row.id });
+  }
+
+  for (const p of SAMPLE_PRODUCTS) {
+    const seller = sellersBySlug.get(p.seller_slug);
+    const category = categoriesBySlug.get(p.category_slug);
+    if (!seller || !category) {
+      throw new Error(`Missing seller (${p.seller_slug}) or category (${p.category_slug}) for product ${p.slug}`);
+    }
+
+    const product = await prisma.product.upsert({
+      where: { seller_id_slug: { seller_id: seller.id, slug: p.slug } },
+      update: {
+        name: p.name,
+        description: p.description,
+        short_description: p.short_description,
+        base_price: p.base_price,
+        compare_at_price: p.compare_at_price ?? null,
+        condition: p.condition,
+        authenticity_status: p.authenticity_status ?? 'UNCLAIMED',
+        tags: p.tags,
+        status: 'PUBLISHED',
+        moderation_status: 'APPROVED',
+        published_at: new Date(),
+      },
+      create: {
+        seller_id: seller.id,
+        category_id: category.id,
+        name: p.name,
+        slug: p.slug,
+        description: p.description,
+        short_description: p.short_description,
+        base_price: p.base_price,
+        compare_at_price: p.compare_at_price ?? null,
+        condition: p.condition,
+        authenticity_status: p.authenticity_status ?? 'UNCLAIMED',
+        tags: p.tags,
+        attributes: {},
+        status: 'PUBLISHED',
+        moderation_status: 'APPROVED',
+        published_at: new Date(),
+      },
+    });
+
+    // Replace images idempotently: clear then re-create
+    await prisma.productImage.deleteMany({ where: { product_id: product.id } });
+    for (let i = 0; i < p.image_count; i++) {
+      await prisma.productImage.create({
+        data: {
+          product_id: product.id,
+          url: `https://picsum.photos/seed/${p.slug}-${i}/800/800`,
+          alt_text: `${p.name} — image ${i + 1}`,
+          display_order: i,
+          is_primary: i === 0,
+        },
+      });
+    }
   }
 
   console.log('Seed complete.');

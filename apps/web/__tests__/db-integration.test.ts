@@ -58,4 +58,13 @@ describe('apps/web → @vendoora/db', () => {
     expect(b).toBeGreaterThanOrEqual(0);
     expect(g).toBeGreaterThanOrEqual(0);
   });
+
+  it('Sample seed populates 3 sellers + 18 products', async () => {
+    const sellers = await prisma.seller.count();
+    const products = await prisma.product.count({
+      where: { status: 'PUBLISHED', moderation_status: 'APPROVED' },
+    });
+    expect(sellers).toBeGreaterThanOrEqual(3);
+    expect(products).toBeGreaterThanOrEqual(18);
+  });
 });
