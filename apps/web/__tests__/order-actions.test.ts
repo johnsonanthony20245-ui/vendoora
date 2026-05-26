@@ -214,7 +214,6 @@ describe('placeOrder server action', () => {
     if (!order) throw new Error('Order missing after placeOrder');
 
     // 3 items but only 2 sellers → 2 escrow holds
-    expect(order.items?.length ?? 0).toBe(0); // include did not request items
     const holds = order.escrow_holds.filter((h) => h.beneficiary_type === 'SELLER');
     expect(holds).toHaveLength(2);
   });

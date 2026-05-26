@@ -148,6 +148,12 @@ export default async function OrderConfirmationPage({ params }: PageProps) {
 
           <div className="mt-8 flex flex-wrap gap-3">
             <Link
+              href={`/orders/${order.order_number}`}
+              className="rounded-lg bg-blue-700 px-5 py-2.5 text-sm font-semibold text-neutral-0 hover:bg-blue-800"
+            >
+              Track your order →
+            </Link>
+            <Link
               href="/"
               className="rounded-lg border border-neutral-300 bg-neutral-0 px-5 py-2.5 text-sm font-semibold text-neutral-900 hover:bg-neutral-100"
             >
