@@ -48,6 +48,10 @@ model User {
   seller_staff_member SellerStaff[] @relation("SellerStaffMember")
   seller_staff_invited SellerStaff[] @relation("SellerStaffInviter")
 
+  // Orders (slice 3)
+  orders              Order[]
+  carts               Cart[]
+
   @@index([clerk_id])
   @@index([email])
   @@index([phone])
@@ -240,6 +244,9 @@ model Seller {
   user                  User       @relation(fields: [user_id], references: [id], onDelete: Restrict)
   staff_members         SellerStaff[]
   products              Product[]
+  order_items           OrderItem[]
+  escrow_holds          EscrowHold[]
+  payouts               Payout[]
 
   @@index([business_slug])
   @@index([kyc_tier])
@@ -392,6 +399,7 @@ model Product {
   category                 Category       @relation(fields: [category_id], references: [id], onDelete: Restrict)
   variants                 ProductVariant[]
   images                   ProductImage[]
+  order_items              OrderItem[]
 
   @@unique([seller_id, slug])
   @@index([seller_id])
@@ -438,6 +446,437 @@ enum ReturnPolicyType {
   STORE_CREDIT_ONLY
   REFUND_WITHIN_WINDOW
   CASE_BY_CASE
+}
+
+// ============================================================================
+// Cart + Order (Engineering_Spec §4.6)
+// Diaspora/driver/group-gift FKs kept as nullable String columns without
+// @relation until slices 5 & 6 land those models.
+// ============================================================================
+
+model Cart {
+  id            String     @id @default(cuid())
+  user_id       String?
+  session_id    String?
+  currency      String     @default("USD")
+  created_at    DateTime   @default(now())
+  updated_at    DateTime   @updatedAt
+
+  user          User?      @relation(fields: [user_id], references: [id], onDelete: SetNull)
+  items         CartItem[]
+
+  @@index([user_id])
+  @@index([session_id])
+  @@map("carts")
+}
+
+model CartItem {
+  id              String   @id @default(cuid())
+  cart_id         String
+  product_id      String
+  variant_id      String?
+  quantity        Int
+  price_at_add    Decimal  @db.Decimal(10, 2)
+  currency        String
+  added_at        DateTime @default(now())
+
+  cart            Cart     @relation(fields: [cart_id], references: [id], onDelete: Cascade)
+
+  @@index([cart_id])
+  @@map("cart_items")
+}
+
+model Order {
+  id              String       @id @default(cuid())
+  order_number    String       @unique
+  buyer_user_id   String
+  buyer_type      BuyerType
+
+  // Recipient (diaspora) — FK relation deferred to slice 6
+  recipient_id      String?
+  recipient_name    String?
+  recipient_phone   String?
+  recipient_address Json?
+
+  buyer_name           String
+  buyer_email          String
+  buyer_phone          String?
+  buyer_billing_address Json?
+
+  delivery_address Json
+  delivery_city    String
+  delivery_county  String?
+  delivery_country String
+  delivery_zone    String
+  delivery_slot    String?
+  delivery_notes   String?
+
+  subtotal        Decimal   @db.Decimal(10, 2)
+  shipping_fee    Decimal   @default(0) @db.Decimal(10, 2)
+  tax_amount      Decimal   @default(0) @db.Decimal(10, 2)
+  diaspora_fee    Decimal   @default(0) @db.Decimal(10, 2)
+  discount_amount Decimal   @default(0) @db.Decimal(10, 2)
+  total_amount    Decimal   @db.Decimal(10, 2)
+  currency        String
+  fx_rate_locked  Decimal?  @db.Decimal(10, 6)
+  fx_rate_at_order DateTime?
+
+  payment_method     PaymentMethod
+  payment_provider   String?
+  payment_intent_id  String?
+  payment_status     PaymentStatus @default(PENDING)
+  paid_at            DateTime?
+
+  status            OrderStatus @default(PENDING_PAYMENT)
+  status_updated_at DateTime    @default(now())
+  cancelled_at      DateTime?
+  cancellation_reason  String?
+  cancelled_by_user_id String?
+
+  // Delivery code (Polish_Phase_Addendum §1.13): bcrypt hash, not plaintext
+  delivery_code_hash       String?
+  delivery_code_sent_at    DateTime?
+  delivery_code_expires_at DateTime?
+  delivery_attempts        Int       @default(0)
+
+  // Personal touch (diaspora)
+  personal_message     String?
+  has_handwritten_card Boolean @default(false)
+  voice_message_url    String?
+
+  // Group gift — FK relation deferred to slice 6
+  group_gift_id          String?
+  is_group_gift_complete Boolean @default(false)
+
+  user_agent      String?
+  ip_address      String?
+  utm_source      String?
+  utm_medium      String?
+  utm_campaign    String?
+
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
+  delivered_at    DateTime?
+
+  buyer           User      @relation(fields: [buyer_user_id], references: [id], onDelete: Restrict)
+  items           OrderItem[]
+  status_history  OrderStatusHistory[]
+  escrow_holds    EscrowHold[]
+
+  @@index([buyer_user_id])
+  @@index([order_number])
+  @@index([status])
+  @@index([buyer_type])
+  @@index([payment_status])
+  @@index([group_gift_id])
+  @@index([created_at])
+  @@map("orders")
+}
+
+enum BuyerType {
+  LIBERIA_DOMESTIC
+  DIASPORA
+}
+
+enum PaymentMethod {
+  MTN_MOMO
+  ORANGE_MONEY
+  CARD
+  WALLET_BALANCE
+  GROUP_GIFT
+}
+
+enum PaymentStatus {
+  PENDING
+  AUTHORIZED
+  CAPTURED
+  FAILED
+  REFUNDED
+  PARTIALLY_REFUNDED
+}
+
+enum OrderStatus {
+  PENDING_PAYMENT
+  PAID
+  ACCEPTED
+  PREPARING
+  READY_FOR_PICKUP
+  PICKED_UP
+  OUT_FOR_DELIVERY
+  ARRIVED
+  DELIVERED
+  COMPLETED
+  DISPUTED
+  CANCELLED
+  REFUNDED
+  EXPIRED
+}
+
+model OrderItem {
+  id              String  @id @default(cuid())
+  order_id        String
+  product_id      String
+  variant_id      String?
+  seller_id       String
+  product_snapshot Json
+  quantity        Int
+  unit_price      Decimal @db.Decimal(10, 2)
+  subtotal        Decimal @db.Decimal(10, 2)
+  commission_rate Float
+  commission_amount Decimal @db.Decimal(10, 2)
+  seller_net      Decimal @db.Decimal(10, 2)
+
+  order           Order   @relation(fields: [order_id], references: [id], onDelete: Restrict)
+  product         Product @relation(fields: [product_id], references: [id], onDelete: Restrict)
+  seller          Seller  @relation(fields: [seller_id], references: [id], onDelete: Restrict)
+
+  @@index([order_id])
+  @@index([seller_id])
+  @@index([product_id])
+  @@map("order_items")
+}
+
+model OrderStatusHistory {
+  id              String   @id @default(cuid())
+  order_id        String
+  from_status     OrderStatus?
+  to_status       OrderStatus
+  changed_by_user_id String?
+  changed_by_system Boolean @default(false)
+  reason          String?
+  metadata        Json?
+  changed_at      DateTime @default(now())
+
+  order           Order    @relation(fields: [order_id], references: [id], onDelete: Cascade)
+
+  @@index([order_id])
+  @@index([changed_at])
+  @@map("order_status_history")
+}
+
+// ============================================================================
+// Escrow + Payments (Engineering_Spec §4.7)
+// State-machine LOGIC lives in packages/domain (P3 Trust Mechanic plan).
+// This slice lands only the table shape + enum values.
+// ============================================================================
+
+model EscrowHold {
+  id              String    @id @default(cuid())
+  order_id        String
+  order_item_id   String?
+  beneficiary_type EscrowBeneficiaryType
+  beneficiary_seller_id String?
+  beneficiary_driver_id String?
+
+  amount          Decimal   @db.Decimal(10, 2)
+  currency        String
+  amount_locked_fx Decimal? @db.Decimal(10, 2)
+  fx_rate_at_hold Decimal?  @db.Decimal(15, 8)
+
+  state           EscrowState @default(PENDING_PAYMENT)
+  state_changed_at DateTime  @default(now())
+
+  scheduled_release_at DateTime?
+  released_at     DateTime?
+  released_by_user_id String?
+  released_amount Decimal?  @db.Decimal(10, 2)
+  refunded_amount Decimal?  @db.Decimal(10, 2)
+
+  payment_id      String?
+  payout_id       String?
+  refund_id       String?
+  dispute_id      String?
+
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
+
+  order           Order     @relation(fields: [order_id], references: [id], onDelete: Restrict)
+  seller          Seller?   @relation(fields: [beneficiary_seller_id], references: [id])
+  state_transitions EscrowStateTransition[]
+  payment         Payment?  @relation(fields: [payment_id], references: [id])
+  payout          Payout?   @relation(fields: [payout_id], references: [id])
+  refund          Refund?   @relation(fields: [refund_id], references: [id])
+
+  @@index([order_id])
+  @@index([state])
+  @@index([beneficiary_seller_id])
+  @@index([beneficiary_driver_id])
+  @@index([scheduled_release_at])
+  @@map("escrow_holds")
+}
+
+enum EscrowBeneficiaryType {
+  SELLER
+  DRIVER
+  PLATFORM
+  BUYER
+  INSURANCE_FUND
+}
+
+enum EscrowState {
+  PENDING_PAYMENT
+  HELD
+  HELD_DISPUTED
+  RELEASING
+  RELEASED
+  REFUNDING
+  REFUNDED
+  PARTIALLY_REFUNDED
+  EXPIRED
+  INSURANCE_PAYOUT
+}
+
+model EscrowStateTransition {
+  id              String      @id @default(cuid())
+  escrow_hold_id  String
+  from_state      EscrowState?
+  to_state        EscrowState
+  actor_user_id   String?
+  actor_system    Boolean     @default(false)
+  reason          String
+  metadata        Json?
+  audit_log_id    String?
+  transitioned_at DateTime    @default(now())
+
+  escrow_hold     EscrowHold  @relation(fields: [escrow_hold_id], references: [id], onDelete: Cascade)
+
+  @@index([escrow_hold_id])
+  @@index([to_state])
+  @@index([transitioned_at])
+  @@map("escrow_state_transitions")
+}
+
+model Payment {
+  id                  String    @id @default(cuid())
+  order_id            String    @unique
+  amount              Decimal   @db.Decimal(10, 2)
+  currency            String
+  provider            PaymentProvider
+  provider_payment_id String?
+  provider_charge_id  String?
+  status              PaymentStatus @default(PENDING)
+
+  stripe_customer_id    String?
+  stripe_payment_method String?
+  momo_phone            String?
+  momo_request_id       String?
+
+  initiated_at    DateTime  @default(now())
+  authorized_at   DateTime?
+  captured_at     DateTime?
+  failed_at       DateTime?
+  failure_reason  String?
+  failure_code    String?
+
+  risk_score      Float?
+  risk_decision   String?
+
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
+
+  escrow_holds    EscrowHold[]
+  refunds         Refund[]
+
+  @@index([order_id])
+  @@index([provider_payment_id])
+  @@index([status])
+  @@map("payments")
+}
+
+enum PaymentProvider {
+  STRIPE
+  MTN_MOMO
+  ORANGE_MONEY
+  WALLET
+}
+
+model Payout {
+  id              String    @id @default(cuid())
+  beneficiary_type EscrowBeneficiaryType
+  beneficiary_seller_id String?
+  beneficiary_driver_id String?
+
+  amount          Decimal   @db.Decimal(10, 2)
+  currency        String
+  payout_method   PayoutMethod
+  payout_account  String
+
+  status          PayoutStatus @default(PENDING)
+  provider_payout_id String?
+  initiated_at    DateTime  @default(now())
+  completed_at    DateTime?
+  failed_at       DateTime?
+  failure_reason  String?
+  retry_count     Int       @default(0)
+  next_retry_at   DateTime?
+
+  escrow_hold_ids String[]
+  order_count     Int       @default(0)
+
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
+
+  seller          Seller?   @relation(fields: [beneficiary_seller_id], references: [id])
+  escrow_holds    EscrowHold[]
+
+  @@index([beneficiary_seller_id])
+  @@index([beneficiary_driver_id])
+  @@index([status])
+  @@index([next_retry_at])
+  @@map("payouts")
+}
+
+enum PayoutStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
+  RETRY_SCHEDULED
+}
+
+model Refund {
+  id              String    @id @default(cuid())
+  payment_id      String
+  order_id        String
+  amount          Decimal   @db.Decimal(10, 2)
+  currency        String
+  reason          String
+  refund_type     RefundType
+  status          RefundStatus @default(PENDING)
+  provider_refund_id String?
+  authorized_by_user_id String
+  initiated_at    DateTime  @default(now())
+  completed_at    DateTime?
+  failed_at       DateTime?
+  failure_reason  String?
+
+  dispute_id      String?
+  is_dispute_resolution Boolean @default(false)
+
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
+
+  payment         Payment   @relation(fields: [payment_id], references: [id], onDelete: Restrict)
+  escrow_holds    EscrowHold[]
+
+  @@index([payment_id])
+  @@index([order_id])
+  @@index([status])
+  @@map("refunds")
+}
+
+enum RefundType {
+  FULL
+  PARTIAL
+  STORE_CREDIT
+}
+
+enum RefundStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
 }
 
 model ProductVariant {

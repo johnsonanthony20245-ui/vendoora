@@ -24,4 +24,14 @@ describe('apps/web → @vendoora/db', () => {
     const count = await prisma.category.count();
     expect(count).toBeGreaterThanOrEqual(12);
   });
+
+  it('Order model is generated and queryable', async () => {
+    const count = await prisma.order.count();
+    expect(count).toBeGreaterThanOrEqual(0);
+  });
+
+  it('EscrowHold model is generated and queryable', async () => {
+    const count = await prisma.escrowHold.count();
+    expect(count).toBeGreaterThanOrEqual(0);
+  });
 });
