@@ -1,0 +1,80 @@
+/* ============================================================
+   Vendoora — global stylesheet
+   1. Import the brand token primitives + semantic aliases
+   2. Import Tailwind v4 utilities
+   3. Map Vendoora tokens into Tailwind's @theme so utility classes
+      (bg-primary, text-default, font-sans, etc.) emit brand values.
+   ============================================================ */
+
+@import "@vendoora/design-tokens/tokens.css";
+@import "tailwindcss";
+
+@theme {
+  /* Brand color palette — Tailwind utilities like bg-blue-700, text-red-500 */
+  --color-blue-50:  #EEF2FF;
+  --color-blue-100: #D8E0F5;
+  --color-blue-200: #B6C5EC;
+  --color-blue-300: #8FA5DD;
+  --color-blue-400: #5A78C9;
+  --color-blue-500: #3354B8;
+  --color-blue-600: #2647B0;
+  --color-blue-700: #1A3DAE;
+  --color-blue-800: #142E7A;
+  --color-blue-900: #0E2255;
+  --color-blue-950: #0A1226;
+
+  --color-red-50:  #FFF1F2;
+  --color-red-100: #FFD7DC;
+  --color-red-200: #F3C2C6;
+  --color-red-400: #E5505F;
+  --color-red-500: #CE1126;
+  --color-red-600: #9F0D1C;
+  --color-red-700: #7A0917;
+
+  --color-neutral-0:    #FFFFFF;
+  --color-neutral-50:   #FAFBFC;
+  --color-neutral-100:  #F7F8FA;
+  --color-neutral-200:  #F0F2F6;
+  --color-neutral-300:  #E3E6EC;
+  --color-neutral-400:  #C8CDD7;
+  --color-neutral-500:  #8A92A3;
+  --color-neutral-600:  #5A6478;
+  --color-neutral-700:  #3A4256;
+  --color-neutral-800:  #1F2A3F;
+  --color-neutral-900:  #0A1226;
+
+  /* Semantic shortcuts — used as: bg-primary, bg-surface, text-default */
+  --color-primary:        #1A3DAE;
+  --color-primary-hover:  #142E7A;
+  --color-primary-deep:   #0E2255;
+  --color-accent:         #CE1126;
+  --color-surface:        #FFFFFF;
+  --color-surface-base:   #FAFBFC;
+  --color-default:        #0A1226;
+  --color-muted:          #5A6478;
+  --color-subtle:         #8A92A3;
+  --color-on-dark:        #FFFFFF;
+  --color-verified:       #047857;
+
+  /* Brand fonts — utility classes font-sans, font-serif, font-mono.
+     Actual font-family declarations come from next/font in layout.tsx,
+     which sets the CSS variable references on <html>. */
+  --font-sans:  var(--font-inter-tight), system-ui, -apple-system, sans-serif;
+  --font-serif: var(--font-fraunces), Georgia, serif;
+  --font-mono:  var(--font-jetbrains-mono), 'SF Mono', Menlo, monospace;
+}
+
+/* ===== Base resets + body styling ===== */
+html {
+  font-family: var(--font-sans);
+  color: var(--color-text-default);
+  background: var(--color-surface-base);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  line-height: var(--leading-normal);
+}

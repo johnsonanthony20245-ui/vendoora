@@ -1,0 +1,259 @@
+/* ============================================================
+   VENDOORA DESIGN TOKENS — Master CSS Variables
+   Source of truth for the brand visual system.
+   Mirrors docs/prototype/Vendoora_Design_Tokens.html.
+   ============================================================ */
+:root {
+  /* ===== PRIMITIVE: BLUE SCALE (brand primary family) ===== */
+  --blue-50:  #EEF2FF;
+  --blue-100: #D8E0F5;
+  --blue-200: #B6C5EC;
+  --blue-300: #8FA5DD;
+  --blue-400: #5A78C9;
+  --blue-500: #3354B8;
+  --blue-600: #2647B0;
+  --blue-700: #1A3DAE;   /* Brand primary */
+  --blue-800: #142E7A;   /* Brand primary deep */
+  --blue-900: #0E2255;
+  --blue-950: #0A1226;   /* Near-black, used for text */
+
+  /* ===== PRIMITIVE: NEUTRAL SCALE ===== */
+  --neutral-0:    #FFFFFF;
+  --neutral-50:   #FAFBFC;
+  --neutral-100:  #F7F8FA;
+  --neutral-200:  #F0F2F6;
+  --neutral-300:  #E3E6EC;
+  --neutral-400:  #C8CDD7;
+  --neutral-500:  #8A92A3;
+  --neutral-600:  #5A6478;
+  --neutral-700:  #3A4256;
+  --neutral-800:  #1F2A3F;
+  --neutral-900:  #0A1226;
+  --neutral-1000: #000000;
+
+  /* ===== PRIMITIVE: ACCENT (Liberian flag red) ===== */
+  --red-50:  #FFF1F2;
+  --red-100: #FFD7DC;
+  --red-200: #F3C2C6;
+  --red-400: #E5505F;
+  --red-500: #CE1126;   /* Liberian flag red, accent */
+  --red-600: #9F0D1C;
+  --red-700: #7A0917;
+
+  /* ===== PRIMITIVE: STATUS ===== */
+  --success-50:  #ECFDF5;
+  --success-100: #C5E6D3;
+  --success-500: #047857;
+  --success-700: #065F46;
+
+  --warning-50:  #FEF3C7;
+  --warning-100: #F0D9A8;
+  --warning-500: #B45309;
+  --warning-700: #92400E;
+
+  --info-50:  #EEF2FF;
+  --info-500: #1A3DAE;
+
+  --error-50:  #FFF1F2;
+  --error-500: #CE1126;
+
+  /* ===== PRIMITIVE: TYPOGRAPHY ===== */
+  --font-sans:  'Inter Tight', system-ui, -apple-system, sans-serif;
+  --font-serif: 'Fraunces', Georgia, serif;
+  --font-mono:  'JetBrains Mono', 'SF Mono', Menlo, monospace;
+
+  --weight-400: 400;
+  --weight-500: 500;
+  --weight-600: 600;
+  --weight-700: 700;
+  --weight-800: 800;
+
+  --size-2xs:  11px;
+  --size-xs:   12px;
+  --size-sm:   13px;
+  --size-base: 15px;
+  --size-md:   16px;
+  --size-lg:   18px;
+  --size-xl:   20px;
+  --size-2xl:  24px;
+  --size-3xl:  30px;
+  --size-4xl:  36px;
+  --size-5xl:  44px;
+  --size-6xl:  56px;
+  --size-7xl:  72px;
+
+  --leading-tight:   1.1;
+  --leading-snug:    1.25;
+  --leading-normal:  1.5;
+  --leading-relaxed: 1.65;
+  --leading-loose:   1.85;
+
+  --tracking-tightest: -0.04em;
+  --tracking-tighter:  -0.035em;
+  --tracking-tight:    -0.02em;
+  --tracking-snug:     -0.01em;
+  --tracking-normal:   0;
+  --tracking-wide:     0.05em;
+  --tracking-wider:    0.1em;
+  --tracking-widest:   0.2em;
+
+  /* ===== PRIMITIVE: SPACING (4px scale) ===== */
+  --space-0:  0;
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-5:  20px;
+  --space-6:  24px;
+  --space-7:  28px;
+  --space-8:  32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-14: 56px;
+  --space-16: 64px;
+  --space-20: 80px;
+  --space-24: 96px;
+
+  /* ===== PRIMITIVE: RADIUS ===== */
+  --radius-none: 0;
+  --radius-xs:   2px;
+  --radius-sm:   4px;
+  --radius-md:   6px;
+  --radius-lg:   8px;
+  --radius-xl:   12px;
+  --radius-2xl:  16px;
+  --radius-3xl:  24px;
+  --radius-full: 9999px;
+
+  /* ===== PRIMITIVE: BORDER WIDTH ===== */
+  --border-0: 0;
+  --border-1: 1px;
+  --border-2: 2px;
+  --border-4: 4px;
+
+  /* ===== PRIMITIVE: SHADOWS ===== */
+  --shadow-none: none;
+  --shadow-xs:  0 1px 2px rgba(10, 18, 38, 0.04);
+  --shadow-sm:  0 1px 3px rgba(10, 18, 38, 0.06), 0 1px 2px rgba(10, 18, 38, 0.04);
+  --shadow-md:  0 4px 12px -2px rgba(10, 18, 38, 0.08), 0 2px 4px rgba(10, 18, 38, 0.04);
+  --shadow-lg:  0 12px 24px -8px rgba(10, 18, 38, 0.12), 0 4px 8px rgba(10, 18, 38, 0.06);
+  --shadow-xl:  0 24px 48px -16px rgba(10, 18, 38, 0.15), 0 8px 16px rgba(10, 18, 38, 0.08);
+  --shadow-2xl: 0 40px 80px -24px rgba(10, 18, 38, 0.20);
+
+  /* ===== PRIMITIVE: MOTION ===== */
+  --duration-instant: 50ms;
+  --duration-fast:    120ms;
+  --duration-default: 200ms;
+  --duration-slow:    320ms;
+  --duration-slower:  500ms;
+
+  --easing-linear:    linear;
+  --easing-ease:      cubic-bezier(0.4, 0, 0.2, 1);
+  --easing-ease-out:  cubic-bezier(0, 0, 0.2, 1);
+  --easing-ease-in:   cubic-bezier(0.4, 0, 1, 1);
+  --easing-bounce:    cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* ===== PRIMITIVE: Z-INDEX ===== */
+  --z-base:     0;
+  --z-raised:   10;
+  --z-sticky:   100;
+  --z-dropdown: 200;
+  --z-overlay:  300;
+  --z-modal:    400;
+  --z-popover:  500;
+  --z-toast:    600;
+  --z-tooltip:  700;
+  --z-debug:    9999;
+
+  /* ============================================================
+     SEMANTIC TOKENS — Reference primitives. Use these in product code.
+     ============================================================ */
+
+  /* === Action === */
+  --color-action-primary:          var(--blue-700);
+  --color-action-primary-hover:    var(--blue-800);
+  --color-action-primary-active:   var(--blue-900);
+  --color-action-primary-disabled: var(--blue-300);
+  --color-action-on-primary:       var(--neutral-0);
+  --color-action-secondary:        var(--neutral-0);
+  --color-action-secondary-hover:  var(--neutral-100);
+  --color-action-secondary-border: var(--neutral-300);
+  --color-action-on-secondary:     var(--neutral-900);
+  --color-action-destructive:      var(--red-500);
+  --color-action-destructive-hover: var(--red-600);
+
+  /* === Text === */
+  --color-text-default:    var(--neutral-900);
+  --color-text-muted:      var(--neutral-600);
+  --color-text-subtle:     var(--neutral-500);
+  --color-text-on-dark:    var(--neutral-0);
+  --color-text-link:       var(--blue-700);
+  --color-text-link-hover: var(--blue-800);
+  --color-text-success:    var(--success-500);
+  --color-text-warning:    var(--warning-500);
+  --color-text-error:      var(--red-500);
+
+  /* === Surface === */
+  --color-surface-base:    var(--neutral-50);
+  --color-surface-default: var(--neutral-0);
+  --color-surface-raised:  var(--neutral-0);
+  --color-surface-sunken:  var(--neutral-100);
+  --color-surface-inverse: var(--neutral-900);
+
+  /* === Border === */
+  --color-border-default: var(--neutral-300);
+  --color-border-soft:    var(--neutral-200);
+  --color-border-strong:  var(--neutral-500);
+  --color-border-focus:   var(--blue-700);
+
+  /* === Status === */
+  --color-status-info-bg:    var(--blue-50);
+  --color-status-info-fg:    var(--blue-700);
+  --color-status-success-bg: var(--success-50);
+  --color-status-success-fg: var(--success-500);
+  --color-status-warning-bg: var(--warning-50);
+  --color-status-warning-fg: var(--warning-500);
+  --color-status-error-bg:   var(--red-50);
+  --color-status-error-fg:   var(--red-500);
+
+  /* === Trust mechanic === */
+  --color-verified:         var(--success-500);
+  --color-verified-bg:      var(--success-50);
+  --color-escrow:           var(--blue-700);
+  --color-escrow-bg:        var(--blue-50);
+  --color-delivery-code:    var(--red-500);
+  --color-delivery-code-bg: var(--red-50);
+}
+
+/* ============================================================
+   DARK MODE — toggled by [data-theme="dark"] on <html>
+   Polish_Phase_Addendum §1.8: dark mode required in P1.
+   ============================================================ */
+[data-theme="dark"] {
+  /* Surface inversion */
+  --color-surface-base:    var(--neutral-900);
+  --color-surface-default: var(--neutral-800);
+  --color-surface-raised:  var(--neutral-700);
+  --color-surface-sunken:  var(--neutral-1000);
+  --color-surface-inverse: var(--neutral-0);
+
+  /* Text inversion */
+  --color-text-default: var(--neutral-0);
+  --color-text-muted:   var(--neutral-400);
+  --color-text-subtle:  var(--neutral-500);
+  --color-text-on-dark: var(--neutral-0);
+
+  /* Border softens */
+  --color-border-default: var(--neutral-700);
+  --color-border-soft:    var(--neutral-800);
+  --color-border-strong:  var(--neutral-500);
+
+  /* Action keeps the brand blue, but the hover/active shift */
+  --color-action-primary:        var(--blue-500);
+  --color-action-primary-hover:  var(--blue-400);
+  --color-action-primary-active: var(--blue-300);
+
+  /* Status backgrounds get muted alpha overlay (kept as primitives —
+     consuming components should use the *-fg tokens against transparent
+     surfaces in dark mode). */
+}

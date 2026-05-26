@@ -1,0 +1,20 @@
+{
+  "name": "@vendoora/design-tokens",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./tokens.css": "./src/tokens.css",
+    "./tokens.json": "./src/tokens.json"
+  },
+  "files": [
+    "src/tokens.css",
+    "src/tokens.json"
+  ],
+  "scripts": {
+    "type-check": "echo \"no TS in this package\" && exit 0",
+    "lint": "echo \"no lint configured yet\" && exit 0",
+    "test": "echo \"no tests yet\" && exit 0",
+    "build": "echo \"no build step (static assets only)\" && exit 0"
+  }
+}
