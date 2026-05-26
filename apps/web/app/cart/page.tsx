@@ -173,14 +173,12 @@ export default async function CartPage() {
                   <span className="font-bold text-neutral-900">${subtotal.toFixed(2)}</span>
                 </div>
 
-                <button
-                  type="button"
-                  disabled
-                  title="Checkout lands in a future slice"
-                  className="mt-6 w-full rounded-lg bg-neutral-300 px-6 py-3 text-sm font-semibold text-neutral-600"
+                <Link
+                  href="/checkout"
+                  className="mt-6 block w-full rounded-lg bg-blue-700 px-6 py-3 text-center text-sm font-semibold text-neutral-0 transition hover:bg-blue-800"
                 >
-                  Checkout (coming soon)
-                </button>
+                  Checkout
+                </Link>
 
                 <p className="mt-3 text-xs text-neutral-500">
                   Your payment will sit in escrow. Sellers are paid only after you confirm delivery with the 6-digit code.
