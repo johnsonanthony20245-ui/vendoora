@@ -61,6 +61,15 @@ model User {
   scheduled_gifts     ScheduledGift[]
   initiated_group_gifts GroupGift[] @relation("GroupGiftInitiator")
 
+  // Reviews + Trust Cases (slice 7a)
+  reviews_authored    Review[]          @relation("ReviewAuthor")
+  review_reports_filed ReviewReport[]   @relation("ReviewReporter")
+  review_reports_resolved ReviewReport[] @relation("ReviewReportResolver")
+  trust_cases_assigned TrustCase[]      @relation("TrustCaseAssignee")
+  trust_cases_created  TrustCase[]      @relation("TrustCaseCreator")
+  trust_case_notes     TrustCaseNote[]
+  trust_case_actions   TrustCaseAction[]
+
   @@index([clerk_id])
   @@index([email])
   @@index([phone])
@@ -643,6 +652,7 @@ model OrderItem {
   order           Order   @relation(fields: [order_id], references: [id], onDelete: Restrict)
   product         Product @relation(fields: [product_id], references: [id], onDelete: Restrict)
   seller          Seller  @relation(fields: [seller_id], references: [id], onDelete: Restrict)
+  review          Review?
 
   @@index([order_id])
   @@index([seller_id])
@@ -1459,6 +1469,259 @@ model ScheduledGift {
 enum ScheduleType {
   ONE_TIME
   RECURRING
+}
+
+// ============================================================================
+// Reviews (Engineering_Spec §4.13 — May 2026 addition)
+// Polymorphic via subject_type + subject_id (no Prisma @relation to
+// Product/Seller because Prisma doesn't support polymorphic FKs;
+// application-layer enforcement).
+// ============================================================================
+
+model Review {
+  id              String      @id @default(cuid())
+  subject_type    ReviewSubjectType
+  subject_id      String
+
+  author_user_id  String
+  order_item_id   String?     @unique
+  verified_purchase Boolean   @default(false)
+
+  rating          Int
+  title           String?
+  body            String
+
+  status          ReviewStatus @default(PUBLISHED)
+
+  seller_response       String?
+  seller_response_at    DateTime?
+
+  helpful_count   Int         @default(0)
+  reported_count  Int         @default(0)
+
+  created_at      DateTime    @default(now())
+  updated_at      DateTime    @updatedAt
+
+  author          User        @relation("ReviewAuthor", fields: [author_user_id], references: [id], onDelete: Restrict)
+  order_item      OrderItem?  @relation(fields: [order_item_id], references: [id])
+  reports         ReviewReport[]
+
+  @@index([subject_type, subject_id, status, created_at])
+  @@index([author_user_id])
+  @@index([order_item_id])
+  @@index([status])
+  @@map("reviews")
+}
+
+enum ReviewSubjectType {
+  PRODUCT
+  SELLER
+}
+
+enum ReviewStatus {
+  PUBLISHED
+  PENDING_REVIEW
+  HIDDEN
+  DELETED
+}
+
+model ReviewReport {
+  id              String      @id @default(cuid())
+  review_id       String
+  reporter_user_id String
+  reason          ReportReason
+  details         String?
+  status          ReportStatus @default(PENDING)
+  reviewed_by_user_id  String?
+  reviewed_at          DateTime?
+  resolution_note      String?
+  created_at      DateTime    @default(now())
+
+  review          Review      @relation(fields: [review_id], references: [id], onDelete: Cascade)
+  reporter        User        @relation("ReviewReporter", fields: [reporter_user_id], references: [id])
+  reviewed_by     User?       @relation("ReviewReportResolver", fields: [reviewed_by_user_id], references: [id])
+
+  @@index([review_id])
+  @@index([reporter_user_id])
+  @@index([status])
+  @@map("review_reports")
+}
+
+enum ReportReason {
+  FAKE_REVIEW
+  OFFENSIVE_LANGUAGE
+  OFF_TOPIC
+  COMPETITOR_ATTACK
+  SPAM
+  OTHER
+}
+
+enum ReportStatus {
+  PENDING
+  REVIEWED_VALID
+  REVIEWED_INVALID
+  DUPLICATE
+}
+
+model ReviewAggregate {
+  id              String      @id @default(cuid())
+  subject_type    ReviewSubjectType
+  subject_id      String
+
+  total_reviews   Int         @default(0)
+  average_rating  Decimal     @default(0) @db.Decimal(3, 2)
+  rating_1_count  Int         @default(0)
+  rating_2_count  Int         @default(0)
+  rating_3_count  Int         @default(0)
+  rating_4_count  Int         @default(0)
+  rating_5_count  Int         @default(0)
+
+  last_review_at  DateTime?
+  updated_at      DateTime    @updatedAt
+
+  @@unique([subject_type, subject_id])
+  @@index([subject_type, subject_id])
+  @@map("review_aggregates")
+}
+
+// ============================================================================
+// Trust Cases (Engineering_Spec §4.14 — May 2026 addition)
+// Polymorphic subject (7 types). Auto-creation engine + assignment logic
+// lives in packages/domain/src/trust/ (P6 Admin/RBAC).
+// ============================================================================
+
+model TrustCase {
+  id              String      @id @default(cuid())
+  case_number     String      @unique
+
+  subject_type    TrustSubjectType
+  subject_id      String
+
+  title           String
+  summary         String
+  status          TrustCaseStatus  @default(NEW)
+  severity        TrustSeverity
+
+  assigned_to_user_id  String?
+  assigned_at          DateTime?
+
+  due_date            DateTime
+
+  resolved_at         DateTime?
+  resolution_summary  String?
+  resolution_action   TrustResolution?
+
+  auto_created            Boolean     @default(false)
+  auto_creation_signal    String?
+
+  created_at      DateTime    @default(now())
+  created_by_user_id String?
+  updated_at      DateTime    @updatedAt
+
+  parent_case_id  String?
+
+  assigned_to     User?       @relation("TrustCaseAssignee", fields: [assigned_to_user_id], references: [id])
+  created_by      User?       @relation("TrustCaseCreator", fields: [created_by_user_id], references: [id])
+  parent_case     TrustCase?  @relation("follow_up_parent", fields: [parent_case_id], references: [id])
+  follow_ups      TrustCase[] @relation("follow_up_parent")
+  notes           TrustCaseNote[]
+  actions         TrustCaseAction[]
+
+  @@index([subject_type, subject_id])
+  @@index([status, due_date])
+  @@index([assigned_to_user_id, status])
+  @@index([severity, due_date])
+  @@index([created_at])
+  @@map("trust_cases")
+}
+
+enum TrustSubjectType {
+  SELLER
+  DRIVER
+  PRODUCT
+  ORDER
+  DISPUTE
+  KYC
+  USER
+}
+
+enum TrustCaseStatus {
+  NEW
+  HEALTHY
+  MONITORING
+  NEEDS_INFO
+  ESCALATED
+  RESTRICTED
+  RESOLVED
+}
+
+enum TrustSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum TrustResolution {
+  NO_ACTION_TAKEN
+  WARNING_ISSUED
+  SUSPENDED_TEMPORARY
+  SUSPENDED_PERMANENT
+  REFUND_ISSUED
+  INSURANCE_PAYOUT
+  RESTORED
+}
+
+model TrustCaseNote {
+  id              String      @id @default(cuid())
+  trust_case_id   String
+  author_user_id  String
+  visibility      NoteVisibility  @default(INTERNAL)
+  body            String
+  created_at      DateTime    @default(now())
+
+  trust_case      TrustCase   @relation(fields: [trust_case_id], references: [id], onDelete: Cascade)
+  author          User        @relation(fields: [author_user_id], references: [id])
+
+  @@index([trust_case_id, created_at])
+  @@map("trust_case_notes")
+}
+
+enum NoteVisibility {
+  INTERNAL
+  SHARED_WITH_SUBJECT
+}
+
+model TrustCaseAction {
+  id              String      @id @default(cuid())
+  trust_case_id   String
+  actor_user_id   String
+  action_type     TrustActionType
+  details         Json
+  created_at      DateTime    @default(now())
+
+  trust_case      TrustCase   @relation(fields: [trust_case_id], references: [id], onDelete: Cascade)
+  actor           User        @relation(fields: [actor_user_id], references: [id])
+
+  @@index([trust_case_id, created_at])
+  @@index([actor_user_id])
+  @@map("trust_case_actions")
+}
+
+enum TrustActionType {
+  CASE_CREATED
+  ASSIGNED
+  REASSIGNED
+  STATUS_CHANGED
+  NOTE_ADDED
+  INFO_REQUESTED
+  ESCALATED
+  MARKED_MONITORING
+  MARKED_REVIEWED
+  FOLLOW_UP_CREATED
+  RESTRICTED
+  RESOLVED
+  REOPENED
 }
 
 model ProductVariant {
