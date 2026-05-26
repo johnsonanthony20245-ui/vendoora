@@ -193,6 +193,29 @@ interface CategoryDef {
   display_order: number;
 }
 
+interface DeliveryZoneDef {
+  name: string;
+  county: string;
+  city: string | null;
+  base_delivery_fee: number;
+  estimated_delivery_hours: number;
+  is_active: boolean;
+}
+
+// 8 Monrovia-area + outer-city zones per Polish_Phase_Addendum §2B.6.
+// Beta zones are launched but with reduced SLA; PLANNED zones (buchanan) are
+// seeded but is_active=false so they don't appear in checkout yet.
+const DELIVERY_ZONES: DeliveryZoneDef[] = [
+  { name: 'sinkor',         county: 'Montserrado', city: 'Monrovia',  base_delivery_fee: 3.00, estimated_delivery_hours: 4,  is_active: true  },
+  { name: 'paynesville',    county: 'Montserrado', city: 'Paynesville', base_delivery_fee: 3.50, estimated_delivery_hours: 6,  is_active: true  },
+  { name: 'bushrod-island', county: 'Montserrado', city: 'Monrovia',  base_delivery_fee: 4.00, estimated_delivery_hours: 6,  is_active: true  },
+  { name: 'old-road',       county: 'Montserrado', city: 'Monrovia',  base_delivery_fee: 3.50, estimated_delivery_hours: 6,  is_active: true  },
+  { name: 'congo-town',     county: 'Montserrado', city: 'Monrovia',  base_delivery_fee: 4.00, estimated_delivery_hours: 6,  is_active: true  },
+  { name: 'caldwell',       county: 'Montserrado', city: 'Caldwell',  base_delivery_fee: 6.00, estimated_delivery_hours: 12, is_active: true  },
+  { name: 'gbarnga',        county: 'Bong',        city: 'Gbarnga',   base_delivery_fee: 12.00, estimated_delivery_hours: 36, is_active: true  },
+  { name: 'buchanan',       county: 'Grand Bassa', city: 'Buchanan',  base_delivery_fee: 10.00, estimated_delivery_hours: 24, is_active: false },
+];
+
 const CATEGORIES: CategoryDef[] = [
   { name: 'Fashion',          slug: 'fashion',          description: 'Clothing, fabrics, accessories, footwear',                       icon_name: 'shirt',         display_order: 1 },
   { name: 'Food & Drink',     slug: 'food-drink',       description: 'Foodstuffs, beverages, pantry, fresh produce',                   icon_name: 'utensils',      display_order: 2 },
@@ -273,6 +296,28 @@ async function main() {
         icon_name: c.icon_name,
         display_order: c.display_order,
         attributes_schema: {},
+      },
+    });
+  }
+
+  console.log(`Seeding ${DELIVERY_ZONES.length} delivery zones...`);
+  for (const z of DELIVERY_ZONES) {
+    await prisma.deliveryZone.upsert({
+      where: { name: z.name },
+      update: {
+        county: z.county,
+        city: z.city,
+        base_delivery_fee: z.base_delivery_fee,
+        estimated_delivery_hours: z.estimated_delivery_hours,
+        is_active: z.is_active,
+      },
+      create: {
+        name: z.name,
+        county: z.county,
+        city: z.city,
+        base_delivery_fee: z.base_delivery_fee,
+        estimated_delivery_hours: z.estimated_delivery_hours,
+        is_active: z.is_active,
       },
     });
   }

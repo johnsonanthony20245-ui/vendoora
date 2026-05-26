@@ -39,4 +39,14 @@ describe('apps/web → @vendoora/db', () => {
     const count = await prisma.dispute.count();
     expect(count).toBeGreaterThanOrEqual(0);
   });
+
+  it('Driver model is generated and queryable', async () => {
+    const count = await prisma.driver.count();
+    expect(count).toBeGreaterThanOrEqual(0);
+  });
+
+  it('DeliveryZone seed has at least 8 zones', async () => {
+    const count = await prisma.deliveryZone.count();
+    expect(count).toBeGreaterThanOrEqual(8);
+  });
 });

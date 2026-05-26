@@ -52,6 +52,9 @@ model User {
   orders              Order[]
   carts               Cart[]
 
+  // Drivers (slice 5)
+  driver              Driver?
+
   @@index([clerk_id])
   @@index([email])
   @@index([phone])
@@ -563,6 +566,7 @@ model Order {
   status_history  OrderStatusHistory[]
   escrow_holds    EscrowHold[]
   disputes        Dispute[]
+  deliveries      Delivery[]
 
   @@index([buyer_user_id])
   @@index([order_number])
@@ -693,6 +697,7 @@ model EscrowHold {
 
   order           Order     @relation(fields: [order_id], references: [id], onDelete: Restrict)
   seller          Seller?   @relation(fields: [beneficiary_seller_id], references: [id])
+  driver          Driver?   @relation(fields: [beneficiary_driver_id], references: [id])
   state_transitions EscrowStateTransition[]
   payment         Payment?  @relation(fields: [payment_id], references: [id])
   payout          Payout?   @relation(fields: [payout_id], references: [id])
@@ -819,6 +824,7 @@ model Payout {
   updated_at      DateTime  @updatedAt
 
   seller          Seller?   @relation(fields: [beneficiary_seller_id], references: [id])
+  driver          Driver?   @relation(fields: [beneficiary_driver_id], references: [id])
   escrow_holds    EscrowHold[]
 
   @@index([beneficiary_seller_id])
@@ -1028,6 +1034,235 @@ enum DisputeEvidenceType {
   DELIVERY_PROOF
   RECEIPT
   OTHER
+}
+
+// ============================================================================
+// Drivers + Logistics (Engineering_Spec §4.9)
+// Dispatch + real-time location logic lives in packages/domain + apps/worker
+// (P7). This slice lands only the table shape + enum values.
+// ============================================================================
+
+model Driver {
+  id              String    @id @default(cuid())
+  user_id         String    @unique
+  driver_number   String    @unique
+
+  // KYC documents
+  drivers_license_url       String?
+  drivers_license_number    String?
+  drivers_license_expires_at DateTime?
+  national_id_url           String?
+  national_id_number        String?
+  proof_of_address_url      String?
+  vehicle_registration_url  String?
+
+  // Background check
+  background_check_status   BackgroundCheckStatus @default(NOT_STARTED)
+  background_check_completed_at DateTime?
+  background_check_notes    String?
+
+  // Training
+  training_completed        Boolean   @default(false)
+  training_completed_at     DateTime?
+
+  // Onboarding
+  onboarding_status         DriverOnboardingStatus @default(SIGNUP)
+  onboarded_at              DateTime?
+
+  // Operational state
+  is_online                 Boolean   @default(false)
+  last_online_at            DateTime?
+  current_location_lat      Float?
+  current_location_lng      Float?
+  current_zone              String?
+  active_delivery_count     Int       @default(0)
+  max_concurrent_deliveries Int       @default(3)
+
+  // Performance
+  total_deliveries          Int       @default(0)
+  total_earnings            Decimal   @default(0) @db.Decimal(15, 2)
+  rating_average            Float?
+  rating_count              Int       @default(0)
+  on_time_rate              Float     @default(100)
+  dispute_count             Int       @default(0)
+  tier                      DriverTier @default(STANDARD)
+
+  // Payout
+  payout_method             PayoutMethod @default(MTN_MOMO)
+  payout_account            String?
+
+  // Suspension
+  is_suspended              Boolean   @default(false)
+  suspended_at              DateTime?
+  suspended_reason          String?
+
+  created_at                DateTime  @default(now())
+  updated_at                DateTime  @updatedAt
+  deleted_at                DateTime?
+
+  user                      User      @relation(fields: [user_id], references: [id], onDelete: Restrict)
+  vehicles                  Vehicle[]
+  deliveries                Delivery[]
+  payouts                   Payout[]
+  ratings                   DriverRating[]
+  escrow_holds              EscrowHold[]
+
+  @@index([is_online])
+  @@index([current_zone])
+  @@index([tier])
+  @@index([is_suspended])
+  @@map("drivers")
+}
+
+enum BackgroundCheckStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  PASSED
+  FAILED
+  EXPIRED
+}
+
+enum DriverOnboardingStatus {
+  SIGNUP
+  DOCUMENTS
+  BACKGROUND_CHECK
+  TRAINING
+  READY
+}
+
+enum DriverTier {
+  STANDARD
+  EXPERIENCED
+  PRO
+  ELITE
+}
+
+model Vehicle {
+  id              String    @id @default(cuid())
+  driver_id       String
+  vehicle_type    VehicleType
+  make            String?
+  model           String?
+  year            Int?
+  license_plate   String?
+  color           String?
+  insurance_url   String?
+  insurance_expires_at DateTime?
+  is_primary      Boolean   @default(true)
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
+
+  driver          Driver    @relation(fields: [driver_id], references: [id], onDelete: Cascade)
+
+  @@index([driver_id])
+  @@map("vehicles")
+}
+
+enum VehicleType {
+  MOTORCYCLE
+  CAR
+  VAN
+  TRUCK
+  BICYCLE
+  ON_FOOT
+}
+
+model Delivery {
+  id              String    @id @default(cuid())
+  order_id        String
+  driver_id       String?
+
+  pickup_address  Json
+  pickup_lat      Float?
+  pickup_lng      Float?
+  pickup_seller_id String
+  pickup_eta      DateTime?
+  picked_up_at    DateTime?
+
+  dropoff_address Json
+  dropoff_lat     Float?
+  dropoff_lng     Float?
+  dropoff_eta     DateTime?
+  arrived_at      DateTime?
+  delivered_at    DateTime?
+
+  delivery_code_entered_at DateTime?
+  delivery_code_attempts   Int       @default(0)
+  delivery_proof_photo_url String?
+  delivery_proof_photo_lat Float?
+  delivery_proof_photo_lng Float?
+  delivery_proof_photo_taken_at DateTime?
+
+  distance_km     Float?
+  estimated_duration_minutes Int?
+  actual_duration_minutes Int?
+
+  driver_fee      Decimal   @db.Decimal(10, 2)
+  driver_bonus    Decimal   @default(0) @db.Decimal(10, 2)
+  driver_tip      Decimal   @default(0) @db.Decimal(10, 2)
+  driver_total    Decimal   @db.Decimal(10, 2)
+
+  status          DeliveryStatus @default(PENDING_ASSIGNMENT)
+
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
+
+  order           Order     @relation(fields: [order_id], references: [id], onDelete: Restrict)
+  driver          Driver?   @relation(fields: [driver_id], references: [id])
+  ratings         DriverRating[]
+
+  @@index([order_id])
+  @@index([driver_id])
+  @@index([status])
+  @@index([pickup_eta])
+  @@map("deliveries")
+}
+
+enum DeliveryStatus {
+  PENDING_ASSIGNMENT
+  ASSIGNED
+  ACCEPTED_BY_DRIVER
+  EN_ROUTE_TO_PICKUP
+  AT_PICKUP
+  PICKED_UP
+  EN_ROUTE_TO_DROPOFF
+  ARRIVED
+  COMPLETED
+  FAILED
+  CANCELLED
+  RETURNED
+}
+
+model DriverRating {
+  id              String    @id @default(cuid())
+  delivery_id     String    @unique
+  driver_id       String
+  rated_by_user_id String
+  rating          Int
+  comment         String?
+  created_at      DateTime  @default(now())
+
+  delivery        Delivery  @relation(fields: [delivery_id], references: [id], onDelete: Cascade)
+  driver          Driver    @relation(fields: [driver_id], references: [id], onDelete: Cascade)
+
+  @@index([driver_id])
+  @@map("driver_ratings")
+}
+
+model DeliveryZone {
+  id              String    @id @default(cuid())
+  name            String    @unique
+  county          String
+  city            String?
+  is_active       Boolean   @default(true)
+  base_delivery_fee Decimal @db.Decimal(10, 2)
+  estimated_delivery_hours Int @default(24)
+  active_drivers_count Int  @default(0)
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
+
+  @@index([is_active])
+  @@map("delivery_zones")
 }
 
 model ProductVariant {
