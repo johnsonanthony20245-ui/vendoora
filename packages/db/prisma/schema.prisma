@@ -70,6 +70,12 @@ model User {
   trust_case_notes     TrustCaseNote[]
   trust_case_actions   TrustCaseAction[]
 
+  // Profile Change + KYC (slice 7b)
+  profile_change_requests_created  ProfileChangeRequest[] @relation("ProfileChangeRequester")
+  profile_change_requests_reviewed ProfileChangeRequest[] @relation("ProfileChangeReviewer")
+  kyc_applications          KycApplication[]               @relation("KycApplicant")
+  kyc_applications_reviewed KycApplication[]               @relation("KycReviewer")
+
   @@index([clerk_id])
   @@index([email])
   @@index([phone])
@@ -1722,6 +1728,274 @@ enum TrustActionType {
   RESTRICTED
   RESOLVED
   REOPENED
+}
+
+// ============================================================================
+// Profile Change Request (Engineering_Spec §4.15 — May 2026 addition)
+// Approval workflow for sensitive seller/driver profile changes.
+// ============================================================================
+
+model ProfileChangeRequest {
+  id              String      @id @default(cuid())
+  subject_type    ProfileSubjectType
+  subject_id      String
+
+  requested_by_user_id  String
+  change_type           ProfileChangeType
+  field_changes         Json
+  supporting_docs       Json?
+  reason                String?
+
+  status                ProfileChangeStatus  @default(PENDING)
+  reviewed_by_user_id   String?
+  reviewed_at           DateTime?
+  decision_note         String?
+  applied_at            DateTime?
+
+  required_approver_tier  ApproverTier  @default(TS_ADMIN)
+
+  created_at      DateTime    @default(now())
+  updated_at      DateTime    @updatedAt
+
+  requested_by    User        @relation("ProfileChangeRequester", fields: [requested_by_user_id], references: [id], onDelete: Restrict)
+  reviewed_by     User?       @relation("ProfileChangeReviewer", fields: [reviewed_by_user_id], references: [id])
+
+  @@index([subject_type, subject_id])
+  @@index([status, created_at])
+  @@index([reviewed_by_user_id])
+  @@map("profile_change_requests")
+}
+
+enum ProfileSubjectType {
+  SELLER
+  DRIVER
+}
+
+enum ProfileChangeType {
+  BUSINESS_NAME
+  LEGAL_NAME
+  ADDRESS
+  BANK_ACCOUNT
+  MOMO_NUMBER
+  VEHICLE_DETAILS
+  SERVICE_ZONE
+  STORE_SLUG
+  TAX_ID
+  OWNER_NAME
+  OTHER
+}
+
+enum ProfileChangeStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  NEEDS_MORE_INFO
+  CANCELLED
+}
+
+enum ApproverTier {
+  TS_ADMIN
+  SUPERADMIN
+}
+
+// ============================================================================
+// Webhook & Outbox (Engineering_Spec §4.16 — May 2026 addition)
+// At-least-once delivery via outbox pattern. WebhookLog is the audit trail
+// for everything that crosses the trust boundary.
+// ============================================================================
+
+model WebhookLog {
+  id              String      @id @default(cuid())
+  direction       WebhookDirection
+  provider        String
+  event_type      String
+
+  request_url     String?
+  request_headers Json?
+  request_body    Json
+  response_status Int?
+  response_body   Json?
+
+  status          WebhookStatus
+
+  external_event_id    String?
+  idempotency_key      String?
+
+  retry_count     Int         @default(0)
+  next_retry_at   DateTime?
+
+  related_resource_type  String?
+  related_resource_id    String?
+
+  received_at     DateTime    @default(now())
+  processed_at    DateTime?
+  duration_ms     Int?
+
+  error_message   String?
+  error_stack     String?
+
+  @@unique([provider, external_event_id])
+  @@index([provider, direction, status])
+  @@index([related_resource_type, related_resource_id])
+  @@index([received_at])
+  @@map("webhook_logs")
+}
+
+enum WebhookDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum WebhookStatus {
+  RECEIVED
+  PROCESSED
+  FAILED
+  RETRYING
+  DUPLICATE
+}
+
+model OutboxEvent {
+  id              String      @id @default(cuid())
+  aggregate_type  String
+  aggregate_id    String
+  event_type      String
+  payload         Json
+
+  status          OutboxStatus  @default(PENDING)
+
+  attempt_count   Int         @default(0)
+  last_attempt_at DateTime?
+  next_attempt_at DateTime?
+  max_attempts    Int         @default(10)
+
+  destinations    Json
+
+  dispatched_at   DateTime?
+  failed_reason   String?
+
+  created_at      DateTime    @default(now())
+
+  @@index([status, next_attempt_at])
+  @@index([aggregate_type, aggregate_id])
+  @@index([created_at])
+  @@map("outbox_events")
+}
+
+enum OutboxStatus {
+  PENDING
+  DISPATCHED
+  FAILED
+  DEAD_LETTER
+}
+
+// ============================================================================
+// KYC Application (Engineering_Spec §4.18 — May 2026 addition)
+// First-class KYC application + document modeling with reminder workflow.
+// ============================================================================
+
+model KycApplication {
+  id              String      @id @default(cuid())
+  applicant_type  KycApplicantType
+  applicant_user_id  String
+
+  target_tier     Int
+  current_tier    Int         @default(0)
+
+  status          KycApplicationStatus  @default(NOT_STARTED)
+  risk_tier       RiskTier?
+
+  reviewer_user_id    String?
+  review_started_at   DateTime?
+  review_completed_at DateTime?
+  review_notes        String?
+
+  last_reminder_sent_at DateTime?
+  reminder_count        Int        @default(0)
+
+  last_applicant_action_at DateTime?
+  stale_at                 DateTime?
+
+  created_at      DateTime    @default(now())
+  submitted_at    DateTime?
+  expires_at      DateTime?
+  updated_at      DateTime    @updatedAt
+
+  applicant       User        @relation("KycApplicant", fields: [applicant_user_id], references: [id], onDelete: Restrict)
+  reviewer        User?       @relation("KycReviewer", fields: [reviewer_user_id], references: [id])
+  documents       KycDocument[]
+
+  @@index([applicant_type, applicant_user_id])
+  @@index([status, created_at])
+  @@index([reviewer_user_id])
+  @@index([stale_at])
+  @@map("kyc_applications")
+}
+
+enum KycApplicantType {
+  SELLER
+  DRIVER
+}
+
+enum KycApplicationStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  SUBMITTED
+  IN_REVIEW
+  NEEDS_MORE_INFO
+  APPROVED
+  DENIED
+  EXPIRED
+}
+
+enum RiskTier {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+model KycDocument {
+  id              String      @id @default(cuid())
+  kyc_application_id   String
+
+  doc_type        KycDocType
+
+  storage_url     String
+  file_name       String
+  file_size_bytes Int
+  mime_type       String
+
+  status          KycDocStatus  @default(UPLOADED)
+  reviewer_note   String?
+
+  uploaded_at     DateTime    @default(now())
+  reviewed_at     DateTime?
+
+  kyc_application KycApplication @relation(fields: [kyc_application_id], references: [id], onDelete: Cascade)
+
+  @@index([kyc_application_id])
+  @@index([doc_type])
+  @@index([status])
+  @@map("kyc_documents")
+}
+
+enum KycDocType {
+  GOVERNMENT_ID
+  SELFIE
+  PROOF_OF_ADDRESS
+  BUSINESS_REGISTRATION
+  TAX_CERTIFICATE
+  BANK_STATEMENT
+  DRIVER_LICENSE
+  VEHICLE_REGISTRATION
+  OTHER
+}
+
+enum KycDocStatus {
+  UPLOADED
+  REVIEWED_VALID
+  REVIEWED_INVALID
+  EXPIRED
+  SUPERSEDED
 }
 
 model ProductVariant {
