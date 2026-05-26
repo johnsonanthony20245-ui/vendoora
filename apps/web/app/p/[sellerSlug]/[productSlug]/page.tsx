@@ -3,6 +3,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { prisma } from '@vendoora/db';
 import { TrustPill, KycTierBadge, ConditionPill } from '../../../../components/TrustPills';
+import { addToCart } from '../../../actions/cart';
 import { BRAND_NAME } from '@vendoora/types';
 
 export const dynamic = 'force-dynamic';
@@ -130,38 +131,45 @@ export default async function ProductDetailPage({ params }: PageProps) {
               <p className="mt-4 text-base text-neutral-700">{product.short_description}</p>
             )}
 
-            {/* Variant picker */}
-            {product.variants.length > 0 && (
-              <div className="mt-6">
-                <label className="block text-sm font-semibold text-neutral-900">Option</label>
-                <select className="mt-2 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm">
-                  {product.variants.map((v) => (
-                    <option key={v.id} value={v.id}>{v.name}</option>
-                  ))}
-                </select>
-              </div>
-            )}
+            {/* Variant picker + Add to cart form */}
+            <form action={addToCart} className="mt-6">
+              <input type="hidden" name="productId" value={product.id} />
+              <input type="hidden" name="quantity" value="1" />
+              {product.variants.length > 0 && (
+                <div className="mb-4">
+                  <label htmlFor="variantId" className="block text-sm font-semibold text-neutral-900">
+                    Option
+                  </label>
+                  <select
+                    id="variantId"
+                    name="variantId"
+                    className="mt-2 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+                  >
+                    {product.variants.map((v) => (
+                      <option key={v.id} value={v.id}>{v.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
-            {/* CTA */}
-            <div className="mt-6 flex gap-3">
-              <button
-                type="button"
-                className="flex-1 rounded-lg bg-blue-700 px-6 py-3 text-base font-semibold text-neutral-0 transition hover:bg-blue-800 disabled:bg-neutral-300"
-                disabled
-                title="Cart functionality lands in a future slice"
-              >
-                Add to cart
-              </button>
-              <button
-                type="button"
-                className="rounded-lg border border-neutral-300 bg-neutral-0 px-4 py-3 text-base font-semibold text-neutral-900 transition hover:bg-neutral-100"
-                aria-label="Save"
-                title="Wishlist functionality lands in a future slice"
-                disabled
-              >
-                ♡
-              </button>
-            </div>
+              <div className="flex gap-3">
+                <button
+                  type="submit"
+                  className="flex-1 rounded-lg bg-blue-700 px-6 py-3 text-base font-semibold text-neutral-0 transition hover:bg-blue-800"
+                >
+                  Add to cart
+                </button>
+                <button
+                  type="button"
+                  className="rounded-lg border border-neutral-300 bg-neutral-0 px-4 py-3 text-base font-semibold text-neutral-900 transition hover:bg-neutral-100 disabled:opacity-50"
+                  aria-label="Save"
+                  title="Wishlist functionality lands in a future slice"
+                  disabled
+                >
+                  ♡
+                </button>
+              </div>
+            </form>
 
             {/* Warranty / Return summary */}
             {(product.warranty_terms || product.return_policy_type !== 'NO_RETURNS') && (

@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { Inter_Tight, Fraunces, JetBrains_Mono } from 'next/font/google';
+import { Header } from '../components/Header';
 import './globals.css';
 
 // Inter Tight — workhorse, 95% of the system (Build_Prompt §9 / brand spec).
@@ -38,7 +39,10 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       lang="en"
       className={`${interTight.variable} ${fraunces.variable} ${jetbrainsMono.variable}`}
     >
-      <body>{children}</body>
+      <body>
+        <Header />
+        {children}
+      </body>
     </html>
   );
 }
