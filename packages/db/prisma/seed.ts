@@ -566,6 +566,88 @@ async function main() {
     }
   }
 
+  // --------------------------------------------------------------------------
+  // Sample product reviews — feeds the PDP's reviews section + rating histogram
+  // + product.rating_average / rating_count summary fields. Deterministic
+  // selection (same products + reviewers + bodies on every reseed).
+  // --------------------------------------------------------------------------
+  console.log('Seeding sample product reviews...');
+
+  const REVIEW_AUTHORS = [
+    { email: 'fatu.kollie@vendoora.test',     name: 'Fatu Kollie',     diaspora: false },
+    { email: 'james.williams@vendoora.test',  name: 'James Williams',  diaspora: true },
+    { email: 'konah.bryant@vendoora.test',    name: 'Konah Bryant',    diaspora: false },
+    { email: 'mariama.koroma@vendoora.test',  name: 'Mariama Koroma',  diaspora: false },
+    { email: 'sarah.tubman@vendoora.test',    name: 'Sarah Tubman',    diaspora: true },
+    { email: 'amos.bestman@vendoora.test',    name: 'Amos Bestman',    diaspora: false },
+  ];
+
+  const REVIEW_BODIES = [
+    `Exactly as described — arrived in 36 hours, packaging perfect. The driver waited while I inspected before I gave him the code. That's the part I love most.`,
+    `Sent this to my mother in Paynesville. Got the photo of her holding it the same day. Going to be a regular for me.`,
+    `Quality is excellent. Vendoora's escrow saved me last month on a different order — they refunded within 48 hours when something arrived broken. Trust earned.`,
+    `Good product, fast delivery to Sinkor. The seller messaged when the driver picked up. Code came by SMS as promised.`,
+    `Honest review: small scuff on the package corner but the item itself is perfect. 4 stars because of packaging, not the product.`,
+    `Best purchase from Vendoora so far. I've ordered six times — every single one delivered as described. Telling my whole family.`,
+  ];
+
+  // Ensure the 6 review-author users exist (idempotent upsert).
+  const authorIds: string[] = [];
+  for (const a of REVIEW_AUTHORS) {
+    const u = await prisma.user.upsert({
+      where: { email: a.email },
+      update: { full_name: a.name },
+      create: {
+        clerk_id: `seed_review_author_${a.email}`,
+        email: a.email,
+        full_name: a.name,
+        is_email_verified: true,
+      },
+    });
+    authorIds.push(u.id);
+  }
+
+  // For each seeded product, write a deterministic spread of 5-6 reviews so
+  // the rating histogram has a real shape. Star distribution (per product):
+  //   five 5★, one 4★, one 3★ — average ≈ 4.6.
+  // Wipe + re-create so reseeds don't accumulate duplicates.
+  const allProducts = await prisma.product.findMany({ select: { id: true } });
+  await prisma.review.deleteMany({
+    where: { subject_type: 'PRODUCT', subject_id: { in: allProducts.map((p) => p.id) } },
+  });
+
+  let reviewCount = 0;
+  for (const product of allProducts) {
+    const ratings = [5, 5, 5, 5, 4, 3]; // 6 reviews per product, avg ≈ 4.5
+    for (let i = 0; i < ratings.length; i++) {
+      const rating = ratings[i] ?? 5;
+      const authorId = authorIds[i % authorIds.length];
+      const body = REVIEW_BODIES[i % REVIEW_BODIES.length];
+      if (!authorId || !body) continue;
+      await prisma.review.create({
+        data: {
+          subject_type: 'PRODUCT',
+          subject_id: product.id,
+          author_user_id: authorId,
+          verified_purchase: i < 4,
+          rating,
+          body,
+          status: 'PUBLISHED',
+          helpful_count: 18 - i * 3,
+        },
+      });
+      reviewCount++;
+    }
+
+    // Update product's rating_average + rating_count denormalised fields.
+    const avg = ratings.reduce((s, r) => s + r, 0) / ratings.length;
+    await prisma.product.update({
+      where: { id: product.id },
+      data: { rating_average: avg, rating_count: ratings.length },
+    });
+  }
+  console.log(`  ${reviewCount} reviews across ${allProducts.length} products.`);
+
   console.log('Seed complete.');
 }
 
