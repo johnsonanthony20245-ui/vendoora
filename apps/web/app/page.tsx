@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { prisma } from '@vendoora/db';
+import { ProtoPageFooter } from '../components/ProtoPageFooter';
 
 /**
  * Homepage — mirrors docs/prototype/Vendoora_App.html `Screens.home()`.
@@ -770,6 +771,12 @@ export default async function HomePage() {
             </div>
           </div>
         </section>
+
+        {/* ============ RICH PAGE FOOTER ============ */}
+        {/* Sits inside .proto-home so the page-footer-* CSS rules (scoped
+            under @scope (.proto-home)) take effect. The thin shell-footer
+            renders below this (in layout.tsx, outside the proto-home scope). */}
+        <ProtoPageFooter />
       </div>
     </div>
   );
