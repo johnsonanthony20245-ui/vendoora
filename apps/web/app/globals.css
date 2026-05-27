@@ -10,8 +10,9 @@
 @import "tailwindcss";
 /* Prototype CSS, partitioned by screen scope. Each file wraps its rules in
    @scope (.proto-X) so they only apply inside the matching wrapper. */
-@import "./prototype-shell.css";  /* .proto-shell — Header + Footer */
-@import "./prototype-home.css";   /* .proto-home  — homepage body */
+@import "./prototype-shell.css";    /* .proto-shell   — Header + Footer */
+@import "./prototype-home.css";     /* .proto-home    — homepage body */
+@import "./prototype-product.css";  /* .proto-product — product detail page */
 
 @theme {
   /* Brand color palette — Tailwind utilities like bg-blue-700, text-red-500 */

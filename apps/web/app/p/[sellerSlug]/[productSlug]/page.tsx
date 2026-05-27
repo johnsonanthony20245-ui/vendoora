@@ -1,16 +1,77 @@
-import { notFound } from 'next/navigation';
 import Link from 'next/link';
-import Image from 'next/image';
+import { notFound } from 'next/navigation';
 import { prisma } from '@vendoora/db';
-import { TrustPill, KycTierBadge, ConditionPill } from '../../../../components/TrustPills';
 import { addToCart } from '../../../actions/cart';
-import { BRAND_NAME } from '@vendoora/types';
 
+/**
+ * Product detail page — mirrors docs/prototype/Vendoora_App.html
+ * `Screens.product()`. Wrapped in <div class="proto-product"> so the
+ * scoped prototype-product.css (@scope (.proto-product)) takes effect.
+ *
+ * Section order, class names, copy match the prototype verbatim:
+ *   breadcrumb → pdp-layout (images + info column) → protection-section →
+ *   reviews-section
+ *
+ * Authenticity status maps the schema's enum (UNCLAIMED / CLAIMED /
+ * PROOF_PROVIDED / PLATFORM_VERIFIED) onto the prototype's three-level
+ * presentation (proof / claimed / unclaimed), with PLATFORM_VERIFIED
+ * surfacing as the strongest "proof" badge.
+ */
 export const dynamic = 'force-dynamic';
 
 interface PageProps {
   params: Promise<{ sellerSlug: string; productSlug: string }>;
 }
+
+type AuthenticityValue = 'proof' | 'claimed' | 'unclaimed';
+
+function mapAuthenticity(status: string): AuthenticityValue {
+  if (status === 'PROOF_PROVIDED' || status === 'PLATFORM_VERIFIED') return 'proof';
+  if (status === 'CLAIMED') return 'claimed';
+  return 'unclaimed';
+}
+
+function AuthenticityRow({ value }: { value: AuthenticityValue }) {
+  if (value === 'proof') {
+    return (
+      <>
+        <strong style={{ color: 'var(--color-verified)' }}>
+          ✓ Authentic with proof
+        </strong>
+        <span className="desc">
+          Distributor invoice + wholesale receipt on file with Vendoora T&amp;S
+        </span>
+      </>
+    );
+  }
+  if (value === 'claimed') {
+    return (
+      <>
+        <strong style={{ color: 'var(--color-text)' }}>
+          Claimed authentic (no proof)
+        </strong>
+        <span className="desc">
+          Seller asserts authenticity but has not uploaded supporting documents.
+        </span>
+      </>
+    );
+  }
+  return (
+    <>
+      <strong style={{ color: 'var(--color-text)' }}>Unclaimed</strong>
+      <span className="desc">Seller has made no authenticity statement.</span>
+    </>
+  );
+}
+
+const CONDITION_LABEL: Record<string, { label: string; desc: string }> = {
+  NEW: { label: 'Brand new', desc: 'Sealed, never used, original packaging' },
+  LIKE_NEW: { label: 'Like new', desc: 'Opened but unused; cosmetically perfect' },
+  USED_GOOD: { label: 'Used — good', desc: 'Lightly used with minor cosmetic wear' },
+  USED_FAIR: { label: 'Used — fair', desc: 'Functional with visible wear' },
+  REFURBISHED: { label: 'Refurbished', desc: 'Restored to working condition by seller' },
+  FOR_PARTS: { label: 'For parts', desc: 'Not working — sold as-is for parts' },
+};
 
 export default async function ProductDetailPage({ params }: PageProps) {
   const { sellerSlug, productSlug } = await params;
@@ -30,226 +91,418 @@ export default async function ProductDetailPage({ params }: PageProps) {
 
   const price = Number(product.base_price);
   const compareAt = product.compare_at_price ? Number(product.compare_at_price) : null;
-  const hasDiscount = compareAt !== null && compareAt > price;
+  const savings = compareAt && compareAt > price ? Math.round((1 - price / compareAt) * 100) : 0;
+  const authenticity = mapAuthenticity(product.authenticity_status);
+  const condition = CONDITION_LABEL[product.condition] ?? { label: product.condition, desc: '' };
+  const primaryImageUrl = product.images[0]?.url;
+
+  // Authenticity badge in the badges row
+  const authBadge =
+    authenticity === 'proof' ? (
+      <span className="badge badge-success">✓ AUTHENTIC — PROOF VERIFIED</span>
+    ) : authenticity === 'claimed' ? (
+      <span className="badge badge-info">AUTHENTICITY CLAIMED</span>
+    ) : null;
+
+  // Strip "—" suffix from product name for breadcrumb crumb
+  const breadcrumbName = product.name.split('—')[0]?.trim() ?? product.name;
 
   return (
-    <main className="bg-neutral-50 min-h-screen">
-      {/* Breadcrumb */}
-      <nav className="border-b border-neutral-200 bg-neutral-0 px-6 py-3 text-sm text-neutral-600">
-        <div className="mx-auto max-w-7xl">
-          <Link href="/" className="hover:text-blue-700">Home</Link>
-          <span className="mx-2 text-neutral-400">/</span>
-          <Link href={`/c/${product.category.slug}`} className="hover:text-blue-700">
-            {product.category.name}
-          </Link>
-          <span className="mx-2 text-neutral-400">/</span>
-          <span className="font-semibold text-neutral-900">{product.name}</span>
+    <div className="proto-product">
+      <div className="screen-container">
+        {/* ============ BREADCRUMB ============ */}
+        <div className="breadcrumb">
+          <Link href="/">Home</Link>
+          <span className="breadcrumb-sep">/</span>
+          <Link href={`/c/${product.category.slug}`}>{product.category.name}</Link>
+          <span className="breadcrumb-sep">/</span>
+          <span className="breadcrumb-current">{breadcrumbName}</span>
         </div>
-      </nav>
 
-      {/* Main product surface */}
-      <section className="bg-neutral-0 px-6 py-8">
-        <div className="mx-auto grid max-w-7xl gap-8 md:grid-cols-2">
-          {/* Image gallery */}
-          <div>
-            <div className="relative aspect-square overflow-hidden rounded-xl bg-neutral-100">
-              {product.images[0] ? (
-                <Image
-                  src={product.images[0].url}
-                  alt={product.images[0].alt_text ?? product.name}
-                  fill
-                  sizes="(max-width: 768px) 100vw, 50vw"
-                  className="object-cover"
-                  priority
-                />
-              ) : (
-                <div className="flex h-full items-center justify-center text-6xl text-neutral-400">📦</div>
+        {/* ============ PDP LAYOUT ============ */}
+        <div className="pdp-layout">
+          {/* ----- IMAGES ----- */}
+          <div className="pdp-images">
+            <div
+              className="pdp-main-img"
+              style={{
+                background: primaryImageUrl
+                  ? `center / cover no-repeat url(${primaryImageUrl})`
+                  : 'radial-gradient(ellipse 80% 60% at 50% 45%, #B6C5EC 0%, #8FA5DD 55%, #5A78C9 100%)',
+              }}
+            >
+              {!primaryImageUrl && (
+                <div
+                  className="hero-visual-pill"
+                  style={{
+                    position: 'absolute',
+                    bottom: 24,
+                    left: '50%',
+                    transform: 'translateX(-50%)',
+                  }}
+                >
+                  📷 {breadcrumbName} photo
+                </div>
               )}
             </div>
-            {product.images.length > 1 && (
-              <div className="mt-3 grid grid-cols-5 gap-2">
-                {product.images.slice(1).map((img) => (
-                  <div key={img.id} className="relative aspect-square overflow-hidden rounded-lg bg-neutral-100">
-                    <Image
-                      src={img.url}
-                      alt={img.alt_text ?? ''}
-                      fill
-                      sizes="100px"
-                      className="object-cover"
-                    />
-                  </div>
+            {product.images.length > 0 && (
+              <div className="pdp-thumbs">
+                {product.images.slice(0, 4).map((img, i) => (
+                  <div
+                    key={img.id}
+                    className={`pdp-thumb${i === 0 ? ' active' : ''}`}
+                    style={{
+                      background: `center / cover no-repeat url(${img.url})`,
+                    }}
+                  />
                 ))}
               </div>
             )}
           </div>
 
-          {/* Info column */}
-          <div>
-            <div className="flex flex-wrap gap-1">
-              <ConditionPill condition={product.condition} />
-              {product.authenticity_status === 'PROOF_PROVIDED' && (
-                <TrustPill variant="condition-new">PROOF PROVIDED</TrustPill>
-              )}
-              {product.authenticity_status === 'PLATFORM_VERIFIED' && (
-                <TrustPill variant="kyc-t4">PLATFORM VERIFIED</TrustPill>
-              )}
+          {/* ----- INFO ----- */}
+          <div className="pdp-info">
+            <div className="pdp-badges-row">
+              <span className="badge badge-success">✓ ESCROW PROTECTED</span>
+              <span className="badge badge-info">⚡ TIER {seller.kyc_tier} SELLER</span>
+              {authBadge}
             </div>
 
-            <h1 className="mt-3 text-3xl font-bold text-neutral-900 md:text-4xl">
-              {product.name}
-            </h1>
+            <h1 className="pdp-title">{product.name}</h1>
 
-            <div className="mt-3 flex items-center gap-2">
-              <Link
-                href={`/store/${seller.business_slug}`}
-                className="text-sm text-neutral-600 hover:text-blue-700"
-              >
-                by <span className="font-semibold text-neutral-900">{seller.business_name}</span>
-              </Link>
-              <KycTierBadge tier={seller.kyc_tier} />
-              {seller.rating_average && (
-                <span className="text-sm text-neutral-600">
-                  ★ {Number(seller.rating_average).toFixed(1)}{' '}
-                  <span className="text-xs">({seller.rating_count})</span>
-                </span>
-              )}
+            <div className="pdp-rating-row">
+              <span className="pdp-stars">★★★★★</span>
+              <strong style={{ color: 'var(--color-text)' }}>
+                {product.rating_average?.toFixed(1) ?? '—'}
+              </strong>
+              <span>·</span>
+              <span>{product.rating_count} verified reviews</span>
+              <span>·</span>
+              <span>{seller.total_orders} sold</span>
             </div>
 
-            <div className="mt-6 flex items-baseline gap-3">
-              <span className="text-4xl font-bold text-neutral-900">${price.toFixed(2)}</span>
-              {hasDiscount && compareAt !== null && (
-                <>
-                  <span className="text-lg text-neutral-500 line-through">${compareAt.toFixed(2)}</span>
-                  <span className="rounded-full bg-red-500 px-2 py-0.5 text-xs font-bold text-neutral-0">
-                    Save ${(compareAt - price).toFixed(2)}
-                  </span>
-                </>
+            <div className="pdp-price">
+              ${price.toFixed(2)}
+              {compareAt && compareAt > price && (
+                <span className="pdp-price-compare">${compareAt.toFixed(2)}</span>
               )}
+              {savings > 0 && <span className="pdp-savings-tag">SAVE {savings}%</span>}
+            </div>
+            <div className="pdp-seller-line">
+              Sold by{' '}
+              <Link href={`/store/${seller.business_slug}`}>{seller.business_name}</Link>
+              {' · '}
+              {extractCity(seller.business_address)}, Liberia
             </div>
 
-            {product.short_description && (
-              <p className="mt-4 text-base text-neutral-700">{product.short_description}</p>
-            )}
+            <div className="pdp-trust-card">
+              <div className="pdp-trust-header">Product trust information</div>
+              <table className="pdp-trust-table">
+                <tbody>
+                  <tr>
+                    <td>Condition</td>
+                    <td>
+                      <strong>{condition.label}</strong>
+                      <span className="desc">{condition.desc}</span>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>Authenticity</td>
+                    <td>
+                      <AuthenticityRow value={authenticity} />
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>Warranty</td>
+                    <td>
+                      <strong>
+                        {product.warranty_terms ?? 'No warranty'}
+                      </strong>
+                      <span className="desc">
+                        {product.warranty_terms
+                          ? `Manufacturer defects only. Excludes wear-and-tear, water damage, accidental damage.${product.warranty_duration_days ? ` (${product.warranty_duration_days} days)` : ''}`
+                          : 'Standard buyer protection still applies.'}
+                      </span>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>Returns</td>
+                    <td>
+                      <strong>
+                        {product.return_policy_type === 'NO_RETURNS'
+                          ? 'Final sale'
+                          : product.return_window_days
+                          ? `${product.return_window_days}-day returns`
+                          : 'Returns accepted'}
+                      </strong>
+                      <span className="desc">
+                        Free return shipping if defective. Buyer pays shipping for
+                        change-of-mind returns.
+                      </span>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>Buyer protection</td>
+                    <td>
+                      <strong style={{ color: 'var(--color-verified)' }}>
+                        ✓ Eligible
+                      </strong>
+                      <span className="desc">
+                        Escrow holds payment until you confirm delivery with a 6-digit
+                        code.
+                      </span>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
 
-            {/* Variant picker + Add to cart form */}
-            <form action={addToCart} className="mt-6">
+            <form action={addToCart}>
               <input type="hidden" name="productId" value={product.id} />
-              <input type="hidden" name="quantity" value="1" />
-              {product.variants.length > 0 && (
-                <div className="mb-4">
-                  <label htmlFor="variantId" className="block text-sm font-semibold text-neutral-900">
-                    Option
-                  </label>
-                  <select
-                    id="variantId"
-                    name="variantId"
-                    className="mt-2 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
-                  >
-                    {product.variants.map((v) => (
-                      <option key={v.id} value={v.id}>{v.name}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
-              <div className="flex gap-3">
+              <div className="pdp-buy-row">
+                <select className="input qty-select" name="quantity" defaultValue="1">
+                  <option value="1">Quantity: 1</option>
+                  <option value="2">Quantity: 2</option>
+                  <option value="3">Quantity: 3</option>
+                </select>
                 <button
                   type="submit"
-                  className="flex-1 rounded-lg bg-blue-700 px-6 py-3 text-base font-semibold text-neutral-0 transition hover:bg-blue-800"
+                  className="btn btn-primary btn-lg"
+                  style={{ flex: 1 }}
                 >
-                  Add to cart
-                </button>
-                <button
-                  type="button"
-                  className="rounded-lg border border-neutral-300 bg-neutral-0 px-4 py-3 text-base font-semibold text-neutral-900 transition hover:bg-neutral-100 disabled:opacity-50"
-                  aria-label="Save"
-                  title="Wishlist functionality lands in a future slice"
-                  disabled
-                >
-                  ♡
+                  Add to cart · ${price.toFixed(2)}
                 </button>
               </div>
             </form>
 
-            {/* Warranty / Return summary */}
-            {(product.warranty_terms || product.return_policy_type !== 'NO_RETURNS') && (
-              <div className="mt-6 grid gap-3 text-sm sm:grid-cols-2">
-                {product.warranty_terms && (
-                  <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-3">
-                    <div className="font-semibold text-neutral-900">Warranty</div>
-                    <div className="mt-1 text-neutral-600">
-                      {product.warranty_terms}
-                      {product.warranty_duration_days && ` (${product.warranty_duration_days} days)`}
-                    </div>
-                  </div>
-                )}
-                <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-3">
-                  <div className="font-semibold text-neutral-900">Returns</div>
-                  <div className="mt-1 text-neutral-600">
-                    {product.return_policy_type === 'NO_RETURNS' ? 'Final sale' : 'Returns accepted'}
-                    {product.return_window_days && ` · ${product.return_window_days} days`}
-                  </div>
+            <form action={addToCart}>
+              <input type="hidden" name="productId" value={product.id} />
+              <input type="hidden" name="quantity" value="1" />
+              <input type="hidden" name="checkoutAfter" value="1" />
+              <button type="submit" className="btn btn-secondary btn-block">
+                Buy now (escrow protected)
+              </button>
+            </form>
+
+            <div style={{ textAlign: 'center', marginTop: 'var(--space-3)' }}>
+              <Link
+                href="/"
+                style={{
+                  fontSize: 13,
+                  color: 'var(--color-action-primary)',
+                  fontWeight: 600,
+                }}
+              >
+                🎁 Send this as a gift to Liberia →
+              </Link>
+            </div>
+
+            <p
+              style={{
+                fontSize: 12,
+                color: 'var(--color-text-subtle)',
+                marginTop: 'var(--space-4)',
+                lineHeight: 1.5,
+              }}
+            >
+              {product.description}
+            </p>
+          </div>
+        </div>
+
+        {/* ============ HOW THIS ORDER IS PROTECTED ============ */}
+        <section className="protection-section">
+          <div className="protection-eyebrow">⚡ HOW THIS ORDER IS PROTECTED</div>
+          <h2 className="protection-title">
+            Every order on Vendoora is verified by a <em>6-digit code.</em>
+          </h2>
+          <p className="protection-subtitle">
+            Your money never goes to the seller until you confirm the package arrived.
+            No code, no payout. No exceptions.
+          </p>
+          <div className="protection-steps">
+            <div className="protection-step">
+              <div className="protection-step-num">1</div>
+              <div className="protection-step-title">You pay</div>
+              <div className="protection-step-desc">
+                MoMo, Orange Money, or card. Money goes to platform escrow — not the
+                seller.
+              </div>
+              <div className="protection-step-status">✓ Held safely</div>
+            </div>
+            <div className="protection-step">
+              <div className="protection-step-num">2</div>
+              <div className="protection-step-title">Seller ships</div>
+              <div className="protection-step-desc">
+                You get a 6-digit code by SMS the moment your package leaves the seller.
+              </div>
+              <div className="protection-step-status">✓ Code arrives</div>
+            </div>
+            <div className="protection-step">
+              <div className="protection-step-num">3</div>
+              <div className="protection-step-title">Driver arrives</div>
+              <div className="protection-step-desc">
+                You give the code to the driver at your door. Driver enters it on their app.
+              </div>
+              <div className="protection-step-status">⚡ You decide</div>
+            </div>
+            <div className="protection-step">
+              <div className="protection-step-num">4</div>
+              <div className="protection-step-title">Seller paid</div>
+              <div className="protection-step-desc">
+                Once the code is verified, escrow releases. Everyone is paid, order is
+                closed.
+              </div>
+              <div className="protection-step-status">✓ Done</div>
+            </div>
+          </div>
+          <div className="protection-footer">
+            <span>
+              <strong style={{ color: 'white' }}>Seller is verified.</strong>{' '}
+              {seller.business_name} has passed{' '}
+              {seller.kyc_tier >= 3 ? '7' : '4'} levels of KYC and has a public
+              verification receipt on file.
+            </span>
+            <Link href="/trust-center">Learn how Vendoora protects you →</Link>
+          </div>
+        </section>
+
+        {/* ============ REVIEWS ============ */}
+        {product.rating_count > 0 && (
+          <section className="reviews-section">
+            <h2 className="section-title" style={{ marginBottom: 'var(--space-4)' }}>
+              Buyer reviews
+            </h2>
+            <div className="review-summary">
+              <div>
+                <div className="review-avg-num">
+                  {product.rating_average?.toFixed(1) ?? '—'}
+                </div>
+                <div className="review-avg-stars">★★★★★</div>
+                <div className="review-avg-count">
+                  {product.rating_count} verified purchases
                 </div>
               </div>
-            )}
-          </div>
-        </div>
-      </section>
+              <div>
+                <RatingBar stars={5} pct={82} count={Math.round(product.rating_count * 0.82)} />
+                <RatingBar stars={4} pct={12} count={Math.round(product.rating_count * 0.12)} />
+                <RatingBar stars={3} pct={3}  count={Math.round(product.rating_count * 0.03)} />
+                <RatingBar stars={2} pct={2}  count={Math.round(product.rating_count * 0.02)} />
+                <RatingBar stars={1} pct={1}  count={Math.round(product.rating_count * 0.01)} />
+              </div>
+            </div>
 
-      {/* "How this order is protected" — per Polish_Phase_Addendum §1.2 */}
-      <section className="bg-blue-700 px-6 py-12 text-neutral-0 md:py-16">
-        <div className="mx-auto max-w-5xl">
-          <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-blue-200">
-            How this order is protected
-          </p>
-          <h2
-            className="text-2xl font-medium md:text-4xl"
-            style={{ fontFamily: 'var(--font-fraunces)' }}
-          >
-            {seller.business_name} is <span className="italic text-red-200">{tierLabel(seller.kyc_tier)} verified</span>. Your payment sits in escrow until you confirm delivery.
-          </h2>
-
-          <ol className="mt-8 grid gap-4 md:grid-cols-4">
-            {[
-              { n: 1, title: 'Pay into escrow', desc: 'Held safely. Seller doesn’t see a cent yet.' },
-              { n: 2, title: 'Code by SMS', desc: 'A 6-digit code lands on your phone.' },
-              { n: 3, title: 'Driver arrives', desc: 'Inspect first. Code only if satisfied.' },
-              { n: 4, title: 'Seller paid', desc: 'Escrow releases after you confirm.' },
-            ].map((step) => (
-              <li key={step.n} className="rounded-xl border border-blue-500 bg-blue-800 p-4">
-                <div className="text-xl font-bold text-red-200" style={{ fontFamily: 'var(--font-jetbrains-mono)' }}>
-                  0{step.n}
-                </div>
-                <div className="mt-2 text-base font-semibold">{step.title}</div>
-                <div className="mt-1 text-sm text-blue-100">{step.desc}</div>
-              </li>
-            ))}
-          </ol>
-
-          <div className="mt-6">
-            <Link href="/trust-center" className="text-sm text-blue-100 underline hover:text-neutral-0">
-              Learn how {BRAND_NAME} protects you →
-            </Link>
-          </div>
-        </div>
-      </section>
-
-      {/* Description */}
-      <section className="px-6 py-8">
-        <div className="mx-auto max-w-5xl">
-          <h2 className="text-xl font-bold text-neutral-900">About this item</h2>
-          <p className="mt-3 whitespace-pre-line text-base leading-relaxed text-neutral-700">
-            {product.description}
-          </p>
-        </div>
-      </section>
-    </main>
+            {/* Stub review cards — production wires to prisma.review.findMany */}
+            <ReviewCard
+              author="Fatu Kollie"
+              initials="FK"
+              date="2 weeks ago"
+              rating={5}
+              verified
+              body={`Exactly as described — arrived in 36 hours, packaging perfect. The driver waited while I inspected before I gave him the code. That's the part I love most.`}
+              helpful={24}
+            />
+            <ReviewCard
+              author="James Williams"
+              initials="JW"
+              date="1 month ago"
+              rating={5}
+              verified
+              diaspora
+              body={`Sent this to my mother in Paynesville. Got the photo of her holding it the same day. Going to be a regular for me.`}
+              helpful={18}
+            />
+          </section>
+        )}
+      </div>
+    </div>
   );
 }
 
-function tierLabel(tier: number): string {
-  if (tier >= 4) return 'T4 Elite';
-  if (tier >= 3) return 'T3';
-  if (tier >= 2) return 'T2';
-  return `T${tier}`;
+function RatingBar({ stars, pct, count }: { stars: number; pct: number; count: number }) {
+  return (
+    <div className="review-bar-row">
+      <span>{stars}★</span>
+      <div className="review-bar">
+        <div className="review-bar-fill" style={{ width: `${pct}%` }} />
+      </div>
+      <span>{count}</span>
+    </div>
+  );
+}
+
+interface ReviewCardProps {
+  author: string;
+  initials: string;
+  date: string;
+  rating: number;
+  verified?: boolean;
+  diaspora?: boolean;
+  body: string;
+  helpful: number;
+}
+
+function ReviewCard({
+  author,
+  initials,
+  date,
+  rating,
+  verified,
+  diaspora,
+  body,
+  helpful,
+}: ReviewCardProps) {
+  return (
+    <div className="review-card">
+      <div className="review-header">
+        <div
+          className="user-avatar"
+          style={{
+            background: diaspora
+              ? 'linear-gradient(135deg, #7c3aed, #5b21b6)'
+              : 'linear-gradient(135deg, #3354B8, #142E7A)',
+          }}
+        >
+          {initials}
+        </div>
+        <div>
+          <div className="review-author-name">
+            {author}
+            {diaspora && (
+              <span className="badge badge-info" style={{ marginLeft: 4 }}>
+                DIASPORA
+              </span>
+            )}
+          </div>
+          <div className="review-meta-line">
+            <span className="review-stars-sm">
+              {'★'.repeat(rating)}
+              {'☆'.repeat(5 - rating)}
+            </span>
+            <span>·</span>
+            {verified && (
+              <>
+                <span className="badge badge-success">✓ Verified Purchase</span>
+                <span>·</span>
+              </>
+            )}
+            <span>{date}</span>
+          </div>
+        </div>
+      </div>
+      <div className="review-body">{body}</div>
+      <div className="review-actions">
+        <span className="review-action">👍 Helpful ({helpful})</span>
+        <span className="review-action">🚩 Report</span>
+      </div>
+    </div>
+  );
+}
+
+function extractCity(address: unknown): string {
+  if (address && typeof address === 'object' && 'city' in address) {
+    const v = (address as { city?: unknown }).city;
+    if (typeof v === 'string' && v.length > 0) return v;
+  }
+  return 'Monrovia';
 }
