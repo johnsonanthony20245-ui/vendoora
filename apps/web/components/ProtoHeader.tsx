@@ -26,7 +26,7 @@ export async function ProtoHeader() {
       </Link>
 
       <nav className="shell-nav" data-role-nav="buyer">
-        <Link href="/" className="nav-item active">Browse</Link>
+        <Link href="/search" className="nav-item">Browse</Link>
         <Link href="/cart" className="nav-item">Orders</Link>
         <Link href="/" className="nav-item">Send home</Link>
         <Link href="/safe-shopping" className="nav-item">Help</Link>
