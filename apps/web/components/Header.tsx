@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { BRAND_NAME } from '@vendoora/types';
 import { getCartCount } from '../app/actions/cart';
 import { SearchBox } from './SearchBox';
+import { ThemeToggle } from './ThemeToggle';
 
 export async function Header() {
   const cartCount = await getCartCount();
@@ -30,7 +31,8 @@ export async function Header() {
           <Link href="/pricing" className="hover:text-blue-700">Sellers</Link>
         </nav>
 
-        <div className="order-2 flex shrink-0 items-center gap-3 md:order-4">
+        <div className="order-2 flex shrink-0 items-center gap-2 md:order-4">
+          <ThemeToggle />
           <Link
             href="/cart"
             aria-label={`Cart (${cartCount} ${cartCount === 1 ? 'item' : 'items'})`}

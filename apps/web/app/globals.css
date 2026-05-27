@@ -64,6 +64,42 @@
   --font-mono:  var(--font-jetbrains-mono), 'SF Mono', Menlo, monospace;
 }
 
+/* ============================================================
+   Dark mode
+   We override the neutral-* and a few semantic tokens under
+   [data-theme="dark"]. Because Tailwind v4 utilities reference
+   var(--color-neutral-*), every existing `bg-neutral-0`,
+   `text-neutral-900`, etc. flips automatically — no per-component
+   dark: variants needed.
+
+   The blue/red brand palettes stay the same in dark mode because
+   the hero surfaces (bg-blue-900) and accents (text-red-200) are
+   already designed for a dark navy background.
+   ============================================================ */
+[data-theme="dark"] {
+  /* Neutral scale — inverted lightness, hue preserved */
+  --color-neutral-0:    #131C36;  /* card / panel surface */
+  --color-neutral-50:   #0B1024;  /* page background */
+  --color-neutral-100:  #1A2545;  /* secondary surface */
+  --color-neutral-200:  #233057;  /* subtle border */
+  --color-neutral-300:  #2F3E6B;  /* border */
+  --color-neutral-400:  #4A5980;  /* decorative / disabled */
+  --color-neutral-500:  #8C95B0;  /* muted text */
+  --color-neutral-600:  #B8C0D4;  /* secondary text */
+  --color-neutral-700:  #D8DEEB;  /* primary text */
+  --color-neutral-800:  #ECEEF5;  /* strong text */
+  --color-neutral-900:  #F7F8FB;  /* headlines */
+
+  /* Semantic aliases */
+  --color-surface:        #131C36;
+  --color-surface-base:   #0B1024;
+  --color-default:        #F7F8FB;
+  --color-muted:          #B8C0D4;
+  --color-subtle:         #8C95B0;
+
+  color-scheme: dark;
+}
+
 /* ===== Base resets + body styling ===== */
 html {
   font-family: var(--font-sans);

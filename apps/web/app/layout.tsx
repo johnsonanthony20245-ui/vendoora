@@ -33,12 +33,21 @@ export const metadata = {
     'Buy and send to Liberia with verified sellers, escrow protection, and code-verified delivery.',
 };
 
+// Inline pre-hydration script: sets data-theme on <html> before React paints,
+// so users who chose dark last visit (or whose OS is dark) never see a
+// flash-of-light. The script is intentionally minimal and self-contained.
+const themeBootstrap = `try{var t=localStorage.getItem('vdr-theme');if(!t){t=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}document.documentElement.dataset.theme=t;}catch(e){}`;
+
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html
       lang="en"
       className={`${interTight.variable} ${fraunces.variable} ${jetbrainsMono.variable}`}
+      suppressHydrationWarning
     >
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeBootstrap }} />
+      </head>
       <body>
         <Header />
         {children}
