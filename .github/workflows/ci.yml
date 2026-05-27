@@ -60,7 +60,7 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm exec prisma generate --schema packages/db/prisma/schema.prisma
+      - run: pnpm -F @vendoora/db exec prisma generate
       - run: pnpm -r type-check
 
   # ──────────────────────────────────────────────────────────────────────
@@ -101,7 +101,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Verify schema.prisma is canonical
         run: |
-          pnpm exec prisma format --schema packages/db/prisma/schema.prisma
+          pnpm -F @vendoora/db exec prisma format
           git diff --exit-code packages/db/prisma/schema.prisma
 
   # ──────────────────────────────────────────────────────────────────────
@@ -123,7 +123,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - env:
           DATABASE_URL: postgresql://stub:stub@localhost:5432/stub?schema=public
-        run: pnpm exec prisma validate --schema packages/db/prisma/schema.prisma
+        run: pnpm -F @vendoora/db exec prisma validate
 
   # ──────────────────────────────────────────────────────────────────────
   # 06 — prisma migrate (deploy against a fresh Postgres + run seed)
@@ -158,11 +158,9 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Apply all migrations
-        working-directory: packages/db
-        run: pnpm exec prisma migrate deploy
+        run: pnpm -F @vendoora/db exec prisma migrate deploy
       - name: Run seed
-        working-directory: packages/db
-        run: pnpm exec prisma db seed
+        run: pnpm -F @vendoora/db exec prisma db seed
 
   # ──────────────────────────────────────────────────────────────────────
   # 07 — vitest (depends on a running Postgres seeded by 06)
@@ -198,10 +196,8 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - working-directory: packages/db
-        run: pnpm exec prisma migrate deploy
-      - working-directory: packages/db
-        run: pnpm exec prisma db seed
+      - run: pnpm -F @vendoora/db exec prisma migrate deploy
+      - run: pnpm -F @vendoora/db exec prisma db seed
       - run: pnpm -r test
 
   # ──────────────────────────────────────────────────────────────────────
@@ -225,7 +221,7 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm exec prisma generate --schema packages/db/prisma/schema.prisma
+      - run: pnpm -F @vendoora/db exec prisma generate
       - run: pnpm -F @vendoora/web build
 
   # ──────────────────────────────────────────────────────────────────────
