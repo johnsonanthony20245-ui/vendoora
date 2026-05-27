@@ -8,6 +8,10 @@
 
 @import "@vendoora/design-tokens/tokens.css";
 @import "tailwindcss";
+/* Prototype CSS — the authoritative visual language. Every class used by
+   docs/prototype/Vendoora_App.html lives here verbatim. Imported AFTER
+   Tailwind so prototype rules win on selector specificity ties. */
+@import "./prototype.css";
 
 @theme {
   /* Brand color palette — Tailwind utilities like bg-blue-700, text-red-500 */
