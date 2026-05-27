@@ -18,63 +18,63 @@ datasource db {
 // ============================================================================
 
 model User {
-  id                  String    @id @default(cuid())
-  clerk_id            String    @unique
-  email               String    @unique
-  phone               String?   @unique
-  phone_country_code  String?
-  full_name           String
-  display_name        String?
-  avatar_url          String?
-  preferred_currency  String    @default("USD")
-  preferred_language  String    @default("en")
-  timezone            String    @default("UTC")
-  is_email_verified   Boolean   @default(false)
-  is_phone_verified   Boolean   @default(false)
-  has_2fa_enabled     Boolean   @default(false)
-  account_status      UserAccountStatus @default(ACTIVE)
-  last_login_at       DateTime?
-  last_login_ip       String?
-  trust_score         Float     @default(50.0)
-  created_at          DateTime  @default(now())
-  updated_at          DateTime  @updatedAt
-  deleted_at          DateTime?
+  id                 String            @id @default(cuid())
+  clerk_id           String            @unique
+  email              String            @unique
+  phone              String?           @unique
+  phone_country_code String?
+  full_name          String
+  display_name       String?
+  avatar_url         String?
+  preferred_currency String            @default("USD")
+  preferred_language String            @default("en")
+  timezone           String            @default("UTC")
+  is_email_verified  Boolean           @default(false)
+  is_phone_verified  Boolean           @default(false)
+  has_2fa_enabled    Boolean           @default(false)
+  account_status     UserAccountStatus @default(ACTIVE)
+  last_login_at      DateTime?
+  last_login_ip      String?
+  trust_score        Float             @default(50.0)
+  created_at         DateTime          @default(now())
+  updated_at         DateTime          @updatedAt
+  deleted_at         DateTime?
 
   user_roles          UserRole[]
   assigned_user_roles UserRole[] @relation("UserRoleAssignedBy")
 
   // Sellers (slice 2)
-  seller              Seller?
-  seller_staff_member SellerStaff[] @relation("SellerStaffMember")
+  seller               Seller?
+  seller_staff_member  SellerStaff[] @relation("SellerStaffMember")
   seller_staff_invited SellerStaff[] @relation("SellerStaffInviter")
 
   // Orders (slice 3)
-  orders              Order[]
-  carts               Cart[]
+  orders Order[]
+  carts  Cart[]
 
   // Drivers (slice 5)
-  driver              Driver?
+  driver Driver?
 
   // Diaspora (slice 6)
-  recipients          Recipient[]
+  recipients               Recipient[]
   group_gift_contributions GroupGiftContributor[]
-  scheduled_gifts     ScheduledGift[]
-  initiated_group_gifts GroupGift[] @relation("GroupGiftInitiator")
+  scheduled_gifts          ScheduledGift[]
+  initiated_group_gifts    GroupGift[]            @relation("GroupGiftInitiator")
 
   // Reviews + Trust Cases (slice 7a)
-  reviews_authored    Review[]          @relation("ReviewAuthor")
-  review_reports_filed ReviewReport[]   @relation("ReviewReporter")
-  review_reports_resolved ReviewReport[] @relation("ReviewReportResolver")
-  trust_cases_assigned TrustCase[]      @relation("TrustCaseAssignee")
-  trust_cases_created  TrustCase[]      @relation("TrustCaseCreator")
-  trust_case_notes     TrustCaseNote[]
-  trust_case_actions   TrustCaseAction[]
+  reviews_authored        Review[]          @relation("ReviewAuthor")
+  review_reports_filed    ReviewReport[]    @relation("ReviewReporter")
+  review_reports_resolved ReviewReport[]    @relation("ReviewReportResolver")
+  trust_cases_assigned    TrustCase[]       @relation("TrustCaseAssignee")
+  trust_cases_created     TrustCase[]       @relation("TrustCaseCreator")
+  trust_case_notes        TrustCaseNote[]
+  trust_case_actions      TrustCaseAction[]
 
   // Profile Change + KYC (slice 7b)
   profile_change_requests_created  ProfileChangeRequest[] @relation("ProfileChangeRequester")
   profile_change_requests_reviewed ProfileChangeRequest[] @relation("ProfileChangeReviewer")
-  kyc_applications          KycApplication[]               @relation("KycApplicant")
-  kyc_applications_reviewed KycApplication[]               @relation("KycReviewer")
+  kyc_applications                 KycApplication[]       @relation("KycApplicant")
+  kyc_applications_reviewed        KycApplication[]       @relation("KycReviewer")
 
   @@index([clerk_id])
   @@index([email])
@@ -111,14 +111,14 @@ model Permission {
 }
 
 model Role {
-  id              String   @id @default(cuid())
-  name            String   @unique
-  display_name    String
-  description     String
-  is_system_role  Boolean  @default(false)
+  id                 String   @id @default(cuid())
+  name               String   @unique
+  display_name       String
+  description        String
+  is_system_role     Boolean  @default(false)
   created_by_user_id String?
-  created_at      DateTime @default(now())
-  updated_at      DateTime @updatedAt
+  created_at         DateTime @default(now())
+  updated_at         DateTime @updatedAt
 
   role_permissions RolePermission[]
   user_roles       UserRole[]
@@ -162,19 +162,19 @@ model UserRole {
 // ============================================================================
 
 model AuditLog {
-  id                String   @id @default(cuid())
-  actor_user_id     String?
-  actor_system      Boolean  @default(false)
-  target_user_id    String?
-  action            String
-  resource_type     String?
-  resource_id       String?
-  before_state      Json?
-  after_state       Json?
-  ip_address        String?
-  user_agent        String?
-  metadata          Json?
-  created_at        DateTime @default(now())
+  id             String   @id @default(cuid())
+  actor_user_id  String?
+  actor_system   Boolean  @default(false)
+  target_user_id String?
+  action         String
+  resource_type  String?
+  resource_id    String?
+  before_state   Json?
+  after_state    Json?
+  ip_address     String?
+  user_agent     String?
+  metadata       Json?
+  created_at     DateTime @default(now())
 
   @@index([actor_user_id, created_at])
   @@index([resource_type, resource_id])
@@ -228,14 +228,14 @@ model SearchEvent {
 }
 
 model FxRate {
-  id              String   @id @default(cuid())
-  from_currency   String
-  to_currency     String
-  rate            Decimal  @db.Decimal(15, 8)
-  source          String   @default("CBL")
-  fetched_at      DateTime @default(now())
-  effective_date  DateTime @db.Date
-  is_active       Boolean  @default(true)
+  id             String   @id @default(cuid())
+  from_currency  String
+  to_currency    String
+  rate           Decimal  @db.Decimal(15, 8)
+  source         String   @default("CBL")
+  fetched_at     DateTime @default(now())
+  effective_date DateTime @db.Date
+  is_active      Boolean  @default(true)
 
   @@unique([from_currency, to_currency, effective_date])
   @@index([effective_date])
@@ -261,46 +261,46 @@ model Seller {
   tax_id               String?
   registration_number  String?
 
-  kyc_tier              Int        @default(0)
-  kyc_status            KYCStatus  @default(NOT_STARTED)
-  kyc_tier_promoted_at  DateTime?
-  kyc_documents         Json?
+  kyc_tier             Int       @default(0)
+  kyc_status           KYCStatus @default(NOT_STARTED)
+  kyc_tier_promoted_at DateTime?
+  kyc_documents        Json?
 
-  saas_plan             SaasPlan   @default(STARTER)
-  saas_plan_started_at  DateTime?
-  saas_plan_renewed_at  DateTime?
-  saas_commission_rate  Float      @default(0.12)
+  saas_plan            SaasPlan  @default(STARTER)
+  saas_plan_started_at DateTime?
+  saas_plan_renewed_at DateTime?
+  saas_commission_rate Float     @default(0.12)
 
-  payout_method         PayoutMethod   @default(MTN_MOMO)
-  payout_account_id     String?
-  payout_schedule       PayoutSchedule @default(WEEKLY)
+  payout_method     PayoutMethod   @default(MTN_MOMO)
+  payout_account_id String?
+  payout_schedule   PayoutSchedule @default(WEEKLY)
 
-  is_featured           Boolean    @default(false)
-  feature_starts_at     DateTime?
-  feature_ends_at       DateTime?
+  is_featured       Boolean   @default(false)
+  feature_starts_at DateTime?
+  feature_ends_at   DateTime?
 
-  total_orders          Int        @default(0)
-  total_gmv             Decimal    @default(0) @db.Decimal(15, 2)
-  total_disputes        Int        @default(0)
-  dispute_rate          Float      @default(0)
-  on_time_rate          Float      @default(100)
-  rating_average        Float?
-  rating_count          Int        @default(0)
+  total_orders   Int     @default(0)
+  total_gmv      Decimal @default(0) @db.Decimal(15, 2)
+  total_disputes Int     @default(0)
+  dispute_rate   Float   @default(0)
+  on_time_rate   Float   @default(100)
+  rating_average Float?
+  rating_count   Int     @default(0)
 
-  is_suspended          Boolean    @default(false)
-  suspended_at          DateTime?
-  suspended_reason      String?
+  is_suspended     Boolean   @default(false)
+  suspended_at     DateTime?
+  suspended_reason String?
 
-  created_at            DateTime   @default(now())
-  updated_at            DateTime   @updatedAt
-  deleted_at            DateTime?
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
 
-  user                  User       @relation(fields: [user_id], references: [id], onDelete: Restrict)
-  staff_members         SellerStaff[]
-  products              Product[]
-  order_items           OrderItem[]
-  escrow_holds          EscrowHold[]
-  payouts               Payout[]
+  user          User          @relation(fields: [user_id], references: [id], onDelete: Restrict)
+  staff_members SellerStaff[]
+  products      Product[]
+  order_items   OrderItem[]
+  escrow_holds  EscrowHold[]
+  payouts       Payout[]
 
   @@index([business_slug])
   @@index([kyc_tier])
@@ -351,12 +351,12 @@ model SellerStaff {
   user_id            String
   role               SellerStaffRole
   invited_by_user_id String
-  invited_at         DateTime @default(now())
+  invited_at         DateTime        @default(now())
   accepted_at        DateTime?
 
-  seller             Seller   @relation(fields: [seller_id], references: [id], onDelete: Cascade)
-  user               User     @relation("SellerStaffMember", fields: [user_id], references: [id], onDelete: Cascade)
-  invited_by         User     @relation("SellerStaffInviter", fields: [invited_by_user_id], references: [id])
+  seller     Seller @relation(fields: [seller_id], references: [id], onDelete: Cascade)
+  user       User   @relation("SellerStaffMember", fields: [user_id], references: [id], onDelete: Cascade)
+  invited_by User   @relation("SellerStaffInviter", fields: [invited_by_user_id], references: [id])
 
   @@id([seller_id, user_id])
   @@index([user_id])
@@ -376,23 +376,23 @@ enum SellerStaffRole {
 // ============================================================================
 
 model Category {
-  id                String    @id @default(cuid())
+  id                String   @id @default(cuid())
   parent_id         String?
   name              String
-  slug              String    @unique
+  slug              String   @unique
   description       String?
   icon_name         String?
   banner_url        String?
   attributes_schema Json
-  display_order     Int       @default(0)
-  is_active         Boolean   @default(true)
-  is_featured       Boolean   @default(false)
-  created_at        DateTime  @default(now())
-  updated_at        DateTime  @updatedAt
+  display_order     Int      @default(0)
+  is_active         Boolean  @default(true)
+  is_featured       Boolean  @default(false)
+  created_at        DateTime @default(now())
+  updated_at        DateTime @updatedAt
 
-  parent            Category? @relation("CategoryHierarchy", fields: [parent_id], references: [id])
-  children          Category[] @relation("CategoryHierarchy")
-  products          Product[]
+  parent   Category?  @relation("CategoryHierarchy", fields: [parent_id], references: [id])
+  children Category[] @relation("CategoryHierarchy")
+  products Product[]
 
   @@index([parent_id])
   @@index([slug])
@@ -401,66 +401,66 @@ model Category {
 }
 
 model Product {
-  id                       String         @id @default(cuid())
-  seller_id                String
-  category_id              String
-  name                     String
-  slug                     String
-  description              String
-  short_description        String?
-  base_price               Decimal        @db.Decimal(10, 2)
-  currency                 String         @default("USD")
-  cost_price               Decimal?       @db.Decimal(10, 2)
-  weight_grams             Int?
-  dimensions               Json?
-  attributes               Json
-  tags                     String[]
-  has_variants             Boolean        @default(false)
-  status                   ProductStatus  @default(DRAFT)
-  moderation_status        ModerationStatus @default(PENDING)
-  inventory_tracking       Boolean        @default(true)
-  inventory_count          Int            @default(0)
-  inventory_low_threshold  Int            @default(5)
-  is_featured              Boolean        @default(false)
-  feature_ends_at          DateTime?
-  promoted_score           Float          @default(0)
-  view_count               Int            @default(0)
-  order_count              Int            @default(0)
-  rating_average           Float?
-  rating_count             Int            @default(0)
-  is_diaspora_eligible     Boolean        @default(true)
-  shipping_zones           String[]
+  id                      String           @id @default(cuid())
+  seller_id               String
+  category_id             String
+  name                    String
+  slug                    String
+  description             String
+  short_description       String?
+  base_price              Decimal          @db.Decimal(10, 2)
+  currency                String           @default("USD")
+  cost_price              Decimal?         @db.Decimal(10, 2)
+  weight_grams            Int?
+  dimensions              Json?
+  attributes              Json
+  tags                    String[]
+  has_variants            Boolean          @default(false)
+  status                  ProductStatus    @default(DRAFT)
+  moderation_status       ModerationStatus @default(PENDING)
+  inventory_tracking      Boolean          @default(true)
+  inventory_count         Int              @default(0)
+  inventory_low_threshold Int              @default(5)
+  is_featured             Boolean          @default(false)
+  feature_ends_at         DateTime?
+  promoted_score          Float            @default(0)
+  view_count              Int              @default(0)
+  order_count             Int              @default(0)
+  rating_average          Float?
+  rating_count            Int              @default(0)
+  is_diaspora_eligible    Boolean          @default(true)
+  shipping_zones          String[]
 
   // May-2026 product extensions (Polish_Phase_Addendum §1.16, Engineering_Spec §4.17)
-  condition                ProductCondition    @default(NEW)
-  condition_note           String?
-  warranty_terms           String?
-  warranty_duration_days   Int?
-  return_policy_type       ReturnPolicyType    @default(NO_RETURNS)
-  return_policy_terms      String?
-  return_window_days       Int?
-  authenticity_status      AuthenticityStatus  @default(UNCLAIMED)
-  authenticity_proof_urls  String[]
-  compare_at_price         Decimal?            @db.Decimal(10, 2)
-  is_buyer_protection_eligible Boolean         @default(true)
+  condition                    ProductCondition   @default(NEW)
+  condition_note               String?
+  warranty_terms               String?
+  warranty_duration_days       Int?
+  return_policy_type           ReturnPolicyType   @default(NO_RETURNS)
+  return_policy_terms          String?
+  return_window_days           Int?
+  authenticity_status          AuthenticityStatus @default(UNCLAIMED)
+  authenticity_proof_urls      String[]
+  compare_at_price             Decimal?           @db.Decimal(10, 2)
+  is_buyer_protection_eligible Boolean            @default(true)
 
   // Full-text-search column — generated by Postgres from name + description.
   // The migration declares it as `GENERATED ALWAYS AS (...) STORED` with a GIN
   // index. Reads use prisma.$queryRaw with websearch_to_tsquery; never written
   // through Prisma client.
-  search_tsv               Unsupported("tsvector")?
+  search_tsv Unsupported("tsvector")?
 
-  created_at               DateTime       @default(now())
-  updated_at               DateTime       @updatedAt
-  published_at             DateTime?
-  deleted_at               DateTime?
+  created_at   DateTime  @default(now())
+  updated_at   DateTime  @updatedAt
+  published_at DateTime?
+  deleted_at   DateTime?
 
-  seller                   Seller         @relation(fields: [seller_id], references: [id], onDelete: Restrict)
-  category                 Category       @relation(fields: [category_id], references: [id], onDelete: Restrict)
-  variants                 ProductVariant[]
-  images                   ProductImage[]
-  order_items              OrderItem[]
-  bundle_items             BundleItem[]
+  seller       Seller           @relation(fields: [seller_id], references: [id], onDelete: Restrict)
+  category     Category         @relation(fields: [category_id], references: [id], onDelete: Restrict)
+  variants     ProductVariant[]
+  images       ProductImage[]
+  order_items  OrderItem[]
+  bundle_items BundleItem[]
 
   @@unique([seller_id, slug])
   @@index([seller_id])
@@ -516,15 +516,15 @@ enum ReturnPolicyType {
 // ============================================================================
 
 model Cart {
-  id            String     @id @default(cuid())
-  user_id       String?
-  session_id    String?
-  currency      String     @default("USD")
-  created_at    DateTime   @default(now())
-  updated_at    DateTime   @updatedAt
+  id         String   @id @default(cuid())
+  user_id    String?
+  session_id String?
+  currency   String   @default("USD")
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
 
-  user          User?      @relation(fields: [user_id], references: [id], onDelete: SetNull)
-  items         CartItem[]
+  user  User?      @relation(fields: [user_id], references: [id], onDelete: SetNull)
+  items CartItem[]
 
   @@index([user_id])
   @@index([session_id])
@@ -532,26 +532,26 @@ model Cart {
 }
 
 model CartItem {
-  id              String   @id @default(cuid())
-  cart_id         String
-  product_id      String
-  variant_id      String?
-  quantity        Int
-  price_at_add    Decimal  @db.Decimal(10, 2)
-  currency        String
-  added_at        DateTime @default(now())
+  id           String   @id @default(cuid())
+  cart_id      String
+  product_id   String
+  variant_id   String?
+  quantity     Int
+  price_at_add Decimal  @db.Decimal(10, 2)
+  currency     String
+  added_at     DateTime @default(now())
 
-  cart            Cart     @relation(fields: [cart_id], references: [id], onDelete: Cascade)
+  cart Cart @relation(fields: [cart_id], references: [id], onDelete: Cascade)
 
   @@index([cart_id])
   @@map("cart_items")
 }
 
 model Order {
-  id              String       @id @default(cuid())
-  order_number    String       @unique
-  buyer_user_id   String
-  buyer_type      BuyerType
+  id            String    @id @default(cuid())
+  order_number  String    @unique
+  buyer_user_id String
+  buyer_type    BuyerType
 
   // Recipient (diaspora) — FK relation deferred to slice 6
   recipient_id      String?
@@ -559,9 +559,9 @@ model Order {
   recipient_phone   String?
   recipient_address Json?
 
-  buyer_name           String
-  buyer_email          String
-  buyer_phone          String?
+  buyer_name            String
+  buyer_email           String
+  buyer_phone           String?
   buyer_billing_address Json?
 
   delivery_address Json
@@ -572,25 +572,25 @@ model Order {
   delivery_slot    String?
   delivery_notes   String?
 
-  subtotal        Decimal   @db.Decimal(10, 2)
-  shipping_fee    Decimal   @default(0) @db.Decimal(10, 2)
-  tax_amount      Decimal   @default(0) @db.Decimal(10, 2)
-  diaspora_fee    Decimal   @default(0) @db.Decimal(10, 2)
-  discount_amount Decimal   @default(0) @db.Decimal(10, 2)
-  total_amount    Decimal   @db.Decimal(10, 2)
-  currency        String
-  fx_rate_locked  Decimal?  @db.Decimal(10, 6)
+  subtotal         Decimal   @db.Decimal(10, 2)
+  shipping_fee     Decimal   @default(0) @db.Decimal(10, 2)
+  tax_amount       Decimal   @default(0) @db.Decimal(10, 2)
+  diaspora_fee     Decimal   @default(0) @db.Decimal(10, 2)
+  discount_amount  Decimal   @default(0) @db.Decimal(10, 2)
+  total_amount     Decimal   @db.Decimal(10, 2)
+  currency         String
+  fx_rate_locked   Decimal?  @db.Decimal(10, 6)
   fx_rate_at_order DateTime?
 
-  payment_method     PaymentMethod
-  payment_provider   String?
-  payment_intent_id  String?
-  payment_status     PaymentStatus @default(PENDING)
-  paid_at            DateTime?
+  payment_method    PaymentMethod
+  payment_provider  String?
+  payment_intent_id String?
+  payment_status    PaymentStatus @default(PENDING)
+  paid_at           DateTime?
 
-  status            OrderStatus @default(PENDING_PAYMENT)
-  status_updated_at DateTime    @default(now())
-  cancelled_at      DateTime?
+  status               OrderStatus @default(PENDING_PAYMENT)
+  status_updated_at    DateTime    @default(now())
+  cancelled_at         DateTime?
   cancellation_reason  String?
   cancelled_by_user_id String?
 
@@ -609,24 +609,24 @@ model Order {
   group_gift_id          String?
   is_group_gift_complete Boolean @default(false)
 
-  user_agent      String?
-  ip_address      String?
-  utm_source      String?
-  utm_medium      String?
-  utm_campaign    String?
+  user_agent   String?
+  ip_address   String?
+  utm_source   String?
+  utm_medium   String?
+  utm_campaign String?
 
-  created_at      DateTime  @default(now())
-  updated_at      DateTime  @updatedAt
-  delivered_at    DateTime?
+  created_at   DateTime  @default(now())
+  updated_at   DateTime  @updatedAt
+  delivered_at DateTime?
 
-  buyer           User      @relation(fields: [buyer_user_id], references: [id], onDelete: Restrict)
-  items           OrderItem[]
-  status_history  OrderStatusHistory[]
-  escrow_holds    EscrowHold[]
-  disputes        Dispute[]
-  deliveries      Delivery[]
-  recipient       Recipient? @relation(fields: [recipient_id], references: [id])
-  group_gift      GroupGift? @relation(fields: [group_gift_id], references: [id])
+  buyer          User                 @relation(fields: [buyer_user_id], references: [id], onDelete: Restrict)
+  items          OrderItem[]
+  status_history OrderStatusHistory[]
+  escrow_holds   EscrowHold[]
+  disputes       Dispute[]
+  deliveries     Delivery[]
+  recipient      Recipient?           @relation(fields: [recipient_id], references: [id])
+  group_gift     GroupGift?           @relation(fields: [group_gift_id], references: [id])
 
   @@index([buyer_user_id])
   @@index([order_number])
@@ -678,23 +678,23 @@ enum OrderStatus {
 }
 
 model OrderItem {
-  id              String  @id @default(cuid())
-  order_id        String
-  product_id      String
-  variant_id      String?
-  seller_id       String
-  product_snapshot Json
-  quantity        Int
-  unit_price      Decimal @db.Decimal(10, 2)
-  subtotal        Decimal @db.Decimal(10, 2)
-  commission_rate Float
+  id                String  @id @default(cuid())
+  order_id          String
+  product_id        String
+  variant_id        String?
+  seller_id         String
+  product_snapshot  Json
+  quantity          Int
+  unit_price        Decimal @db.Decimal(10, 2)
+  subtotal          Decimal @db.Decimal(10, 2)
+  commission_rate   Float
   commission_amount Decimal @db.Decimal(10, 2)
-  seller_net      Decimal @db.Decimal(10, 2)
+  seller_net        Decimal @db.Decimal(10, 2)
 
-  order           Order   @relation(fields: [order_id], references: [id], onDelete: Restrict)
-  product         Product @relation(fields: [product_id], references: [id], onDelete: Restrict)
-  seller          Seller  @relation(fields: [seller_id], references: [id], onDelete: Restrict)
-  review          Review?
+  order   Order   @relation(fields: [order_id], references: [id], onDelete: Restrict)
+  product Product @relation(fields: [product_id], references: [id], onDelete: Restrict)
+  seller  Seller  @relation(fields: [seller_id], references: [id], onDelete: Restrict)
+  review  Review?
 
   @@index([order_id])
   @@index([seller_id])
@@ -703,17 +703,17 @@ model OrderItem {
 }
 
 model OrderStatusHistory {
-  id              String   @id @default(cuid())
-  order_id        String
-  from_status     OrderStatus?
-  to_status       OrderStatus
+  id                 String       @id @default(cuid())
+  order_id           String
+  from_status        OrderStatus?
+  to_status          OrderStatus
   changed_by_user_id String?
-  changed_by_system Boolean @default(false)
-  reason          String?
-  metadata        Json?
-  changed_at      DateTime @default(now())
+  changed_by_system  Boolean      @default(false)
+  reason             String?
+  metadata           Json?
+  changed_at         DateTime     @default(now())
 
-  order           Order    @relation(fields: [order_id], references: [id], onDelete: Cascade)
+  order Order @relation(fields: [order_id], references: [id], onDelete: Cascade)
 
   @@index([order_id])
   @@index([changed_at])
@@ -727,43 +727,43 @@ model OrderStatusHistory {
 // ============================================================================
 
 model EscrowHold {
-  id              String    @id @default(cuid())
-  order_id        String
-  order_item_id   String?
-  beneficiary_type EscrowBeneficiaryType
+  id                    String                @id @default(cuid())
+  order_id              String
+  order_item_id         String?
+  beneficiary_type      EscrowBeneficiaryType
   beneficiary_seller_id String?
   beneficiary_driver_id String?
 
-  amount          Decimal   @db.Decimal(10, 2)
-  currency        String
+  amount           Decimal  @db.Decimal(10, 2)
+  currency         String
   amount_locked_fx Decimal? @db.Decimal(10, 2)
-  fx_rate_at_hold Decimal?  @db.Decimal(15, 8)
+  fx_rate_at_hold  Decimal? @db.Decimal(15, 8)
 
-  state           EscrowState @default(PENDING_PAYMENT)
-  state_changed_at DateTime  @default(now())
+  state            EscrowState @default(PENDING_PAYMENT)
+  state_changed_at DateTime    @default(now())
 
   scheduled_release_at DateTime?
-  released_at     DateTime?
-  released_by_user_id String?
-  released_amount Decimal?  @db.Decimal(10, 2)
-  refunded_amount Decimal?  @db.Decimal(10, 2)
+  released_at          DateTime?
+  released_by_user_id  String?
+  released_amount      Decimal?  @db.Decimal(10, 2)
+  refunded_amount      Decimal?  @db.Decimal(10, 2)
 
-  payment_id      String?
-  payout_id       String?
-  refund_id       String?
-  dispute_id      String?
+  payment_id String?
+  payout_id  String?
+  refund_id  String?
+  dispute_id String?
 
-  created_at      DateTime  @default(now())
-  updated_at      DateTime  @updatedAt
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
 
-  order           Order     @relation(fields: [order_id], references: [id], onDelete: Restrict)
-  seller          Seller?   @relation(fields: [beneficiary_seller_id], references: [id])
-  driver          Driver?   @relation(fields: [beneficiary_driver_id], references: [id])
+  order             Order                   @relation(fields: [order_id], references: [id], onDelete: Restrict)
+  seller            Seller?                 @relation(fields: [beneficiary_seller_id], references: [id])
+  driver            Driver?                 @relation(fields: [beneficiary_driver_id], references: [id])
   state_transitions EscrowStateTransition[]
-  payment         Payment?  @relation(fields: [payment_id], references: [id])
-  payout          Payout?   @relation(fields: [payout_id], references: [id])
-  refund          Refund?   @relation(fields: [refund_id], references: [id])
-  dispute         Dispute?  @relation(fields: [dispute_id], references: [id])
+  payment           Payment?                @relation(fields: [payment_id], references: [id])
+  payout            Payout?                 @relation(fields: [payout_id], references: [id])
+  refund            Refund?                 @relation(fields: [refund_id], references: [id])
+  dispute           Dispute?                @relation(fields: [dispute_id], references: [id])
 
   @@index([order_id])
   @@index([state])
@@ -795,18 +795,18 @@ enum EscrowState {
 }
 
 model EscrowStateTransition {
-  id              String      @id @default(cuid())
+  id              String       @id @default(cuid())
   escrow_hold_id  String
   from_state      EscrowState?
   to_state        EscrowState
   actor_user_id   String?
-  actor_system    Boolean     @default(false)
+  actor_system    Boolean      @default(false)
   reason          String
   metadata        Json?
   audit_log_id    String?
-  transitioned_at DateTime    @default(now())
+  transitioned_at DateTime     @default(now())
 
-  escrow_hold     EscrowHold  @relation(fields: [escrow_hold_id], references: [id], onDelete: Cascade)
+  escrow_hold EscrowHold @relation(fields: [escrow_hold_id], references: [id], onDelete: Cascade)
 
   @@index([escrow_hold_id])
   @@index([to_state])
@@ -815,35 +815,35 @@ model EscrowStateTransition {
 }
 
 model Payment {
-  id                  String    @id @default(cuid())
-  order_id            String    @unique
-  amount              Decimal   @db.Decimal(10, 2)
+  id                  String          @id @default(cuid())
+  order_id            String          @unique
+  amount              Decimal         @db.Decimal(10, 2)
   currency            String
   provider            PaymentProvider
   provider_payment_id String?
   provider_charge_id  String?
-  status              PaymentStatus @default(PENDING)
+  status              PaymentStatus   @default(PENDING)
 
   stripe_customer_id    String?
   stripe_payment_method String?
   momo_phone            String?
   momo_request_id       String?
 
-  initiated_at    DateTime  @default(now())
-  authorized_at   DateTime?
-  captured_at     DateTime?
-  failed_at       DateTime?
-  failure_reason  String?
-  failure_code    String?
+  initiated_at   DateTime  @default(now())
+  authorized_at  DateTime?
+  captured_at    DateTime?
+  failed_at      DateTime?
+  failure_reason String?
+  failure_code   String?
 
-  risk_score      Float?
-  risk_decision   String?
+  risk_score    Float?
+  risk_decision String?
 
-  created_at      DateTime  @default(now())
-  updated_at      DateTime  @updatedAt
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
 
-  escrow_holds    EscrowHold[]
-  refunds         Refund[]
+  escrow_holds EscrowHold[]
+  refunds      Refund[]
 
   @@index([order_id])
   @@index([provider_payment_id])
@@ -859,34 +859,34 @@ enum PaymentProvider {
 }
 
 model Payout {
-  id              String    @id @default(cuid())
-  beneficiary_type EscrowBeneficiaryType
+  id                    String                @id @default(cuid())
+  beneficiary_type      EscrowBeneficiaryType
   beneficiary_seller_id String?
   beneficiary_driver_id String?
 
-  amount          Decimal   @db.Decimal(10, 2)
-  currency        String
-  payout_method   PayoutMethod
-  payout_account  String
+  amount         Decimal      @db.Decimal(10, 2)
+  currency       String
+  payout_method  PayoutMethod
+  payout_account String
 
-  status          PayoutStatus @default(PENDING)
+  status             PayoutStatus @default(PENDING)
   provider_payout_id String?
-  initiated_at    DateTime  @default(now())
-  completed_at    DateTime?
-  failed_at       DateTime?
-  failure_reason  String?
-  retry_count     Int       @default(0)
-  next_retry_at   DateTime?
+  initiated_at       DateTime     @default(now())
+  completed_at       DateTime?
+  failed_at          DateTime?
+  failure_reason     String?
+  retry_count        Int          @default(0)
+  next_retry_at      DateTime?
 
   escrow_hold_ids String[]
-  order_count     Int       @default(0)
+  order_count     Int      @default(0)
 
-  created_at      DateTime  @default(now())
-  updated_at      DateTime  @updatedAt
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
 
-  seller          Seller?   @relation(fields: [beneficiary_seller_id], references: [id])
-  driver          Driver?   @relation(fields: [beneficiary_driver_id], references: [id])
-  escrow_holds    EscrowHold[]
+  seller       Seller?      @relation(fields: [beneficiary_seller_id], references: [id])
+  driver       Driver?      @relation(fields: [beneficiary_driver_id], references: [id])
+  escrow_holds EscrowHold[]
 
   @@index([beneficiary_seller_id])
   @@index([beneficiary_driver_id])
@@ -905,30 +905,30 @@ enum PayoutStatus {
 }
 
 model Refund {
-  id              String    @id @default(cuid())
-  payment_id      String
-  order_id        String
-  amount          Decimal   @db.Decimal(10, 2)
-  currency        String
-  reason          String
-  refund_type     RefundType
-  status          RefundStatus @default(PENDING)
-  provider_refund_id String?
+  id                    String       @id @default(cuid())
+  payment_id            String
+  order_id              String
+  amount                Decimal      @db.Decimal(10, 2)
+  currency              String
+  reason                String
+  refund_type           RefundType
+  status                RefundStatus @default(PENDING)
+  provider_refund_id    String?
   authorized_by_user_id String
-  initiated_at    DateTime  @default(now())
-  completed_at    DateTime?
-  failed_at       DateTime?
-  failure_reason  String?
+  initiated_at          DateTime     @default(now())
+  completed_at          DateTime?
+  failed_at             DateTime?
+  failure_reason        String?
 
-  dispute_id      String?
+  dispute_id            String?
   is_dispute_resolution Boolean @default(false)
 
-  created_at      DateTime  @default(now())
-  updated_at      DateTime  @updatedAt
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
 
-  payment         Payment   @relation(fields: [payment_id], references: [id], onDelete: Restrict)
-  escrow_holds    EscrowHold[]
-  dispute         Dispute?  @relation(fields: [dispute_id], references: [id])
+  payment      Payment      @relation(fields: [payment_id], references: [id], onDelete: Restrict)
+  escrow_holds EscrowHold[]
+  dispute      Dispute?     @relation(fields: [dispute_id], references: [id])
 
   @@index([payment_id])
   @@index([order_id])
@@ -957,44 +957,44 @@ enum RefundStatus {
 // ============================================================================
 
 model Dispute {
-  id              String          @id @default(cuid())
-  dispute_number  String          @unique
-  order_id        String
+  id                   String   @id @default(cuid())
+  dispute_number       String   @unique
+  order_id             String
   initiated_by_user_id String
-  initiated_at    DateTime        @default(now())
+  initiated_at         DateTime @default(now())
 
-  category        DisputeCategory
-  reason          DisputeReason
-  description     String
+  category    DisputeCategory
+  reason      DisputeReason
+  description String
 
-  status          DisputeStatus   @default(OPEN)
+  status                    DisputeStatus @default(OPEN)
   assigned_to_admin_user_id String?
-  assigned_at     DateTime?
+  assigned_at               DateTime?
 
-  resolution      DisputeResolution?
-  resolution_amount Decimal?      @db.Decimal(10, 2)
-  resolution_notes String?
-  resolved_at     DateTime?
+  resolution          DisputeResolution?
+  resolution_amount   Decimal?           @db.Decimal(10, 2)
+  resolution_notes    String?
+  resolved_at         DateTime?
   resolved_by_user_id String?
 
-  sla_due_at      DateTime
-  sla_breached    Boolean         @default(false)
-  escalated_at    DateTime?
+  sla_due_at   DateTime
+  sla_breached Boolean   @default(false)
+  escalated_at DateTime?
 
   buyer_response_at  DateTime?
   seller_response_at DateTime?
 
-  is_chargeback                Boolean @default(false)
-  chargeback_provider_case_id  String?
+  is_chargeback               Boolean @default(false)
+  chargeback_provider_case_id String?
 
-  created_at      DateTime        @default(now())
-  updated_at      DateTime        @updatedAt
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
 
-  order           Order           @relation(fields: [order_id], references: [id], onDelete: Restrict)
-  messages        DisputeMessage[]
-  evidence        DisputeEvidence[]
-  escrow_holds    EscrowHold[]
-  refunds         Refund[]
+  order        Order             @relation(fields: [order_id], references: [id], onDelete: Restrict)
+  messages     DisputeMessage[]
+  evidence     DisputeEvidence[]
+  escrow_holds EscrowHold[]
+  refunds      Refund[]
 
   @@index([order_id])
   @@index([status])
@@ -1048,15 +1048,15 @@ enum DisputeResolution {
 }
 
 model DisputeMessage {
-  id              String                   @id @default(cuid())
-  dispute_id      String
-  author_user_id  String
-  author_type     DisputeMessageAuthorType
-  body            String
-  is_internal     Boolean                  @default(false)
-  created_at      DateTime                 @default(now())
+  id             String                   @id @default(cuid())
+  dispute_id     String
+  author_user_id String
+  author_type    DisputeMessageAuthorType
+  body           String
+  is_internal    Boolean                  @default(false)
+  created_at     DateTime                 @default(now())
 
-  dispute         Dispute                  @relation(fields: [dispute_id], references: [id], onDelete: Cascade)
+  dispute Dispute @relation(fields: [dispute_id], references: [id], onDelete: Cascade)
 
   @@index([dispute_id])
   @@index([created_at])
@@ -1081,7 +1081,7 @@ model DisputeEvidence {
   evidence_type       DisputeEvidenceType
   created_at          DateTime            @default(now())
 
-  dispute             Dispute             @relation(fields: [dispute_id], references: [id], onDelete: Cascade)
+  dispute Dispute @relation(fields: [dispute_id], references: [id], onDelete: Cascade)
 
   @@index([dispute_id])
   @@map("dispute_evidence")
@@ -1104,31 +1104,31 @@ enum DisputeEvidenceType {
 // ============================================================================
 
 model Driver {
-  id              String    @id @default(cuid())
-  user_id         String    @unique
-  driver_number   String    @unique
+  id            String @id @default(cuid())
+  user_id       String @unique
+  driver_number String @unique
 
   // KYC documents
-  drivers_license_url       String?
-  drivers_license_number    String?
+  drivers_license_url        String?
+  drivers_license_number     String?
   drivers_license_expires_at DateTime?
-  national_id_url           String?
-  national_id_number        String?
-  proof_of_address_url      String?
-  vehicle_registration_url  String?
+  national_id_url            String?
+  national_id_number         String?
+  proof_of_address_url       String?
+  vehicle_registration_url   String?
 
   // Background check
-  background_check_status   BackgroundCheckStatus @default(NOT_STARTED)
+  background_check_status       BackgroundCheckStatus @default(NOT_STARTED)
   background_check_completed_at DateTime?
-  background_check_notes    String?
+  background_check_notes        String?
 
   // Training
-  training_completed        Boolean   @default(false)
-  training_completed_at     DateTime?
+  training_completed    Boolean   @default(false)
+  training_completed_at DateTime?
 
   // Onboarding
-  onboarding_status         DriverOnboardingStatus @default(SIGNUP)
-  onboarded_at              DateTime?
+  onboarding_status DriverOnboardingStatus @default(SIGNUP)
+  onboarded_at      DateTime?
 
   // Operational state
   is_online                 Boolean   @default(false)
@@ -1140,33 +1140,33 @@ model Driver {
   max_concurrent_deliveries Int       @default(3)
 
   // Performance
-  total_deliveries          Int       @default(0)
-  total_earnings            Decimal   @default(0) @db.Decimal(15, 2)
-  rating_average            Float?
-  rating_count              Int       @default(0)
-  on_time_rate              Float     @default(100)
-  dispute_count             Int       @default(0)
-  tier                      DriverTier @default(STANDARD)
+  total_deliveries Int        @default(0)
+  total_earnings   Decimal    @default(0) @db.Decimal(15, 2)
+  rating_average   Float?
+  rating_count     Int        @default(0)
+  on_time_rate     Float      @default(100)
+  dispute_count    Int        @default(0)
+  tier             DriverTier @default(STANDARD)
 
   // Payout
-  payout_method             PayoutMethod @default(MTN_MOMO)
-  payout_account            String?
+  payout_method  PayoutMethod @default(MTN_MOMO)
+  payout_account String?
 
   // Suspension
-  is_suspended              Boolean   @default(false)
-  suspended_at              DateTime?
-  suspended_reason          String?
+  is_suspended     Boolean   @default(false)
+  suspended_at     DateTime?
+  suspended_reason String?
 
-  created_at                DateTime  @default(now())
-  updated_at                DateTime  @updatedAt
-  deleted_at                DateTime?
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
 
-  user                      User      @relation(fields: [user_id], references: [id], onDelete: Restrict)
-  vehicles                  Vehicle[]
-  deliveries                Delivery[]
-  payouts                   Payout[]
-  ratings                   DriverRating[]
-  escrow_holds              EscrowHold[]
+  user         User           @relation(fields: [user_id], references: [id], onDelete: Restrict)
+  vehicles     Vehicle[]
+  deliveries   Delivery[]
+  payouts      Payout[]
+  ratings      DriverRating[]
+  escrow_holds EscrowHold[]
 
   @@index([is_online])
   @@index([current_zone])
@@ -1199,21 +1199,21 @@ enum DriverTier {
 }
 
 model Vehicle {
-  id              String    @id @default(cuid())
-  driver_id       String
-  vehicle_type    VehicleType
-  make            String?
-  model           String?
-  year            Int?
-  license_plate   String?
-  color           String?
-  insurance_url   String?
+  id                   String      @id @default(cuid())
+  driver_id            String
+  vehicle_type         VehicleType
+  make                 String?
+  model                String?
+  year                 Int?
+  license_plate        String?
+  color                String?
+  insurance_url        String?
   insurance_expires_at DateTime?
-  is_primary      Boolean   @default(true)
-  created_at      DateTime  @default(now())
-  updated_at      DateTime  @updatedAt
+  is_primary           Boolean     @default(true)
+  created_at           DateTime    @default(now())
+  updated_at           DateTime    @updatedAt
 
-  driver          Driver    @relation(fields: [driver_id], references: [id], onDelete: Cascade)
+  driver Driver @relation(fields: [driver_id], references: [id], onDelete: Cascade)
 
   @@index([driver_id])
   @@map("vehicles")
@@ -1229,16 +1229,16 @@ enum VehicleType {
 }
 
 model Delivery {
-  id              String    @id @default(cuid())
-  order_id        String
-  driver_id       String?
+  id        String  @id @default(cuid())
+  order_id  String
+  driver_id String?
 
-  pickup_address  Json
-  pickup_lat      Float?
-  pickup_lng      Float?
+  pickup_address   Json
+  pickup_lat       Float?
+  pickup_lng       Float?
   pickup_seller_id String
-  pickup_eta      DateTime?
-  picked_up_at    DateTime?
+  pickup_eta       DateTime?
+  picked_up_at     DateTime?
 
   dropoff_address Json
   dropoff_lat     Float?
@@ -1247,30 +1247,30 @@ model Delivery {
   arrived_at      DateTime?
   delivered_at    DateTime?
 
-  delivery_code_entered_at DateTime?
-  delivery_code_attempts   Int       @default(0)
-  delivery_proof_photo_url String?
-  delivery_proof_photo_lat Float?
-  delivery_proof_photo_lng Float?
+  delivery_code_entered_at      DateTime?
+  delivery_code_attempts        Int       @default(0)
+  delivery_proof_photo_url      String?
+  delivery_proof_photo_lat      Float?
+  delivery_proof_photo_lng      Float?
   delivery_proof_photo_taken_at DateTime?
 
-  distance_km     Float?
+  distance_km                Float?
   estimated_duration_minutes Int?
-  actual_duration_minutes Int?
+  actual_duration_minutes    Int?
 
-  driver_fee      Decimal   @db.Decimal(10, 2)
-  driver_bonus    Decimal   @default(0) @db.Decimal(10, 2)
-  driver_tip      Decimal   @default(0) @db.Decimal(10, 2)
-  driver_total    Decimal   @db.Decimal(10, 2)
+  driver_fee   Decimal @db.Decimal(10, 2)
+  driver_bonus Decimal @default(0) @db.Decimal(10, 2)
+  driver_tip   Decimal @default(0) @db.Decimal(10, 2)
+  driver_total Decimal @db.Decimal(10, 2)
 
-  status          DeliveryStatus @default(PENDING_ASSIGNMENT)
+  status DeliveryStatus @default(PENDING_ASSIGNMENT)
 
-  created_at      DateTime  @default(now())
-  updated_at      DateTime  @updatedAt
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
 
-  order           Order     @relation(fields: [order_id], references: [id], onDelete: Restrict)
-  driver          Driver?   @relation(fields: [driver_id], references: [id])
-  ratings         DriverRating[]
+  order   Order          @relation(fields: [order_id], references: [id], onDelete: Restrict)
+  driver  Driver?        @relation(fields: [driver_id], references: [id])
+  ratings DriverRating[]
 
   @@index([order_id])
   @@index([driver_id])
@@ -1295,32 +1295,32 @@ enum DeliveryStatus {
 }
 
 model DriverRating {
-  id              String    @id @default(cuid())
-  delivery_id     String    @unique
-  driver_id       String
+  id               String   @id @default(cuid())
+  delivery_id      String   @unique
+  driver_id        String
   rated_by_user_id String
-  rating          Int
-  comment         String?
-  created_at      DateTime  @default(now())
+  rating           Int
+  comment          String?
+  created_at       DateTime @default(now())
 
-  delivery        Delivery  @relation(fields: [delivery_id], references: [id], onDelete: Cascade)
-  driver          Driver    @relation(fields: [driver_id], references: [id], onDelete: Cascade)
+  delivery Delivery @relation(fields: [delivery_id], references: [id], onDelete: Cascade)
+  driver   Driver   @relation(fields: [driver_id], references: [id], onDelete: Cascade)
 
   @@index([driver_id])
   @@map("driver_ratings")
 }
 
 model DeliveryZone {
-  id              String    @id @default(cuid())
-  name            String    @unique
-  county          String
-  city            String?
-  is_active       Boolean   @default(true)
-  base_delivery_fee Decimal @db.Decimal(10, 2)
-  estimated_delivery_hours Int @default(24)
-  active_drivers_count Int  @default(0)
-  created_at      DateTime  @default(now())
-  updated_at      DateTime  @updatedAt
+  id                       String   @id @default(cuid())
+  name                     String   @unique
+  county                   String
+  city                     String?
+  is_active                Boolean  @default(true)
+  base_delivery_fee        Decimal  @db.Decimal(10, 2)
+  estimated_delivery_hours Int      @default(24)
+  active_drivers_count     Int      @default(0)
+  created_at               DateTime @default(now())
+  updated_at               DateTime @updatedAt
 
   @@index([is_active])
   @@map("delivery_zones")
@@ -1332,29 +1332,29 @@ model DeliveryZone {
 // ============================================================================
 
 model Recipient {
-  id              String    @id @default(cuid())
-  sender_user_id  String
-  name            String
-  relationship    String?
-  phone           String
-  phone_country_code String @default("+231")
-  address_line1   String
-  address_line2   String?
-  city            String
-  county          String?
-  country         String    @default("Liberia")
-  landmark        String?
-  delivery_zone   String?
-  is_primary      Boolean   @default(false)
-  order_count     Int       @default(0)
-  last_order_at   DateTime?
-  created_at      DateTime  @default(now())
-  updated_at      DateTime  @updatedAt
-  deleted_at      DateTime?
+  id                 String    @id @default(cuid())
+  sender_user_id     String
+  name               String
+  relationship       String?
+  phone              String
+  phone_country_code String    @default("+231")
+  address_line1      String
+  address_line2      String?
+  city               String
+  county             String?
+  country            String    @default("Liberia")
+  landmark           String?
+  delivery_zone      String?
+  is_primary         Boolean   @default(false)
+  order_count        Int       @default(0)
+  last_order_at      DateTime?
+  created_at         DateTime  @default(now())
+  updated_at         DateTime  @updatedAt
+  deleted_at         DateTime?
 
-  sender          User      @relation(fields: [sender_user_id], references: [id], onDelete: Cascade)
+  sender          User            @relation(fields: [sender_user_id], references: [id], onDelete: Cascade)
   orders          Order[]
-  group_gifts    GroupGift[]
+  group_gifts     GroupGift[]
   scheduled_gifts ScheduledGift[]
 
   @@index([sender_user_id])
@@ -1363,25 +1363,25 @@ model Recipient {
 }
 
 model GiftBundle {
-  id              String    @id @default(cuid())
-  slug            String    @unique
-  name            String
-  description     String
-  occasion        BundleOccasion
-  hero_image_url  String
-  price           Decimal   @db.Decimal(10, 2)
-  currency        String    @default("USD")
-  contents_summary String
-  is_customizable Boolean   @default(false)
-  is_active       Boolean   @default(true)
-  is_featured     Boolean   @default(false)
-  display_order   Int       @default(0)
+  id                 String         @id @default(cuid())
+  slug               String         @unique
+  name               String
+  description        String
+  occasion           BundleOccasion
+  hero_image_url     String
+  price              Decimal        @db.Decimal(10, 2)
+  currency           String         @default("USD")
+  contents_summary   String
+  is_customizable    Boolean        @default(false)
+  is_active          Boolean        @default(true)
+  is_featured        Boolean        @default(false)
+  display_order      Int            @default(0)
   created_by_user_id String
-  created_at      DateTime  @default(now())
-  updated_at      DateTime  @updatedAt
+  created_at         DateTime       @default(now())
+  updated_at         DateTime       @updatedAt
 
   items           BundleItem[]
-  group_gifts    GroupGift[]
+  group_gifts     GroupGift[]
   scheduled_gifts ScheduledGift[]
 
   @@index([occasion])
@@ -1405,45 +1405,45 @@ enum BundleOccasion {
 }
 
 model BundleItem {
-  id              String    @id @default(cuid())
-  bundle_id       String
-  product_id      String
-  variant_id      String?
-  quantity        Int       @default(1)
-  is_substitutable Boolean  @default(false)
-  display_order   Int       @default(0)
+  id               String  @id @default(cuid())
+  bundle_id        String
+  product_id       String
+  variant_id       String?
+  quantity         Int     @default(1)
+  is_substitutable Boolean @default(false)
+  display_order    Int     @default(0)
 
-  bundle          GiftBundle @relation(fields: [bundle_id], references: [id], onDelete: Cascade)
-  product         Product    @relation(fields: [product_id], references: [id], onDelete: Restrict)
+  bundle  GiftBundle @relation(fields: [bundle_id], references: [id], onDelete: Cascade)
+  product Product    @relation(fields: [product_id], references: [id], onDelete: Restrict)
 
   @@index([bundle_id])
   @@map("bundle_items")
 }
 
 model GroupGift {
-  id              String    @id @default(cuid())
-  group_gift_code String    @unique
-  initiator_user_id String
-  recipient_id    String
-  bundle_id       String?
-  target_amount   Decimal   @db.Decimal(10, 2)
-  currency        String    @default("USD")
-  collected_amount Decimal  @default(0) @db.Decimal(10, 2)
-  contributor_count Int     @default(1)
-  deadline_at     DateTime
-  status          GroupGiftStatus @default(OPEN)
+  id                 String          @id @default(cuid())
+  group_gift_code    String          @unique
+  initiator_user_id  String
+  recipient_id       String
+  bundle_id          String?
+  target_amount      Decimal         @db.Decimal(10, 2)
+  currency           String          @default("USD")
+  collected_amount   Decimal         @default(0) @db.Decimal(10, 2)
+  contributor_count  Int             @default(1)
+  deadline_at        DateTime
+  status             GroupGiftStatus @default(OPEN)
   completed_order_id String?
   message_from_group String?
-  created_at      DateTime  @default(now())
-  updated_at      DateTime  @updatedAt
-  completed_at    DateTime?
-  cancelled_at    DateTime?
+  created_at         DateTime        @default(now())
+  updated_at         DateTime        @updatedAt
+  completed_at       DateTime?
+  cancelled_at       DateTime?
 
-  initiator       User      @relation("GroupGiftInitiator", fields: [initiator_user_id], references: [id], onDelete: Restrict)
-  recipient       Recipient @relation(fields: [recipient_id], references: [id], onDelete: Restrict)
-  bundle          GiftBundle? @relation(fields: [bundle_id], references: [id])
-  contributors    GroupGiftContributor[]
-  orders          Order[]
+  initiator    User                   @relation("GroupGiftInitiator", fields: [initiator_user_id], references: [id], onDelete: Restrict)
+  recipient    Recipient              @relation(fields: [recipient_id], references: [id], onDelete: Restrict)
+  bundle       GiftBundle?            @relation(fields: [bundle_id], references: [id])
+  contributors GroupGiftContributor[]
+  orders       Order[]
 
   @@index([group_gift_code])
   @@index([initiator_user_id])
@@ -1461,17 +1461,17 @@ enum GroupGiftStatus {
 }
 
 model GroupGiftContributor {
-  id              String    @id @default(cuid())
-  group_gift_id   String
-  user_id         String
-  amount          Decimal   @db.Decimal(10, 2)
-  currency        String
-  message         String?
-  payment_id      String?
-  contributed_at  DateTime  @default(now())
+  id             String   @id @default(cuid())
+  group_gift_id  String
+  user_id        String
+  amount         Decimal  @db.Decimal(10, 2)
+  currency       String
+  message        String?
+  payment_id     String?
+  contributed_at DateTime @default(now())
 
-  group_gift      GroupGift @relation(fields: [group_gift_id], references: [id], onDelete: Cascade)
-  user            User      @relation(fields: [user_id], references: [id], onDelete: Restrict)
+  group_gift GroupGift @relation(fields: [group_gift_id], references: [id], onDelete: Cascade)
+  user       User      @relation(fields: [user_id], references: [id], onDelete: Restrict)
 
   @@unique([group_gift_id, user_id])
   @@index([user_id])
@@ -1479,28 +1479,28 @@ model GroupGiftContributor {
 }
 
 model ScheduledGift {
-  id              String    @id @default(cuid())
-  sender_user_id  String
-  recipient_id    String
-  bundle_id       String?
-  product_id      String?
-  variant_id      String?
-  schedule_type   ScheduleType
-  fire_date       DateTime?
-  recurrence_rule String?
+  id                   String       @id @default(cuid())
+  sender_user_id       String
+  recipient_id         String
+  bundle_id            String?
+  product_id           String?
+  variant_id           String?
+  schedule_type        ScheduleType
+  fire_date            DateTime?
+  recurrence_rule      String?
   payment_method_token String
-  is_active       Boolean   @default(true)
-  last_fired_at   DateTime?
-  next_fire_at    DateTime?
-  fire_count      Int       @default(0)
-  max_fires       Int?
-  personal_message String?
-  created_at      DateTime  @default(now())
-  updated_at      DateTime  @updatedAt
+  is_active            Boolean      @default(true)
+  last_fired_at        DateTime?
+  next_fire_at         DateTime?
+  fire_count           Int          @default(0)
+  max_fires            Int?
+  personal_message     String?
+  created_at           DateTime     @default(now())
+  updated_at           DateTime     @updatedAt
 
-  sender          User      @relation(fields: [sender_user_id], references: [id], onDelete: Cascade)
-  recipient       Recipient @relation(fields: [recipient_id], references: [id], onDelete: Restrict)
-  bundle          GiftBundle? @relation(fields: [bundle_id], references: [id])
+  sender    User        @relation(fields: [sender_user_id], references: [id], onDelete: Cascade)
+  recipient Recipient   @relation(fields: [recipient_id], references: [id], onDelete: Restrict)
+  bundle    GiftBundle? @relation(fields: [bundle_id], references: [id])
 
   @@index([sender_user_id])
   @@index([is_active])
@@ -1521,32 +1521,32 @@ enum ScheduleType {
 // ============================================================================
 
 model Review {
-  id              String      @id @default(cuid())
-  subject_type    ReviewSubjectType
-  subject_id      String
+  id           String            @id @default(cuid())
+  subject_type ReviewSubjectType
+  subject_id   String
 
-  author_user_id  String
-  order_item_id   String?     @unique
-  verified_purchase Boolean   @default(false)
+  author_user_id    String
+  order_item_id     String? @unique
+  verified_purchase Boolean @default(false)
 
-  rating          Int
-  title           String?
-  body            String
+  rating Int
+  title  String?
+  body   String
 
-  status          ReviewStatus @default(PUBLISHED)
+  status ReviewStatus @default(PUBLISHED)
 
-  seller_response       String?
-  seller_response_at    DateTime?
+  seller_response    String?
+  seller_response_at DateTime?
 
-  helpful_count   Int         @default(0)
-  reported_count  Int         @default(0)
+  helpful_count  Int @default(0)
+  reported_count Int @default(0)
 
-  created_at      DateTime    @default(now())
-  updated_at      DateTime    @updatedAt
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
 
-  author          User        @relation("ReviewAuthor", fields: [author_user_id], references: [id], onDelete: Restrict)
-  order_item      OrderItem?  @relation(fields: [order_item_id], references: [id])
-  reports         ReviewReport[]
+  author     User           @relation("ReviewAuthor", fields: [author_user_id], references: [id], onDelete: Restrict)
+  order_item OrderItem?     @relation(fields: [order_item_id], references: [id])
+  reports    ReviewReport[]
 
   @@index([subject_type, subject_id, status, created_at])
   @@index([author_user_id])
@@ -1568,20 +1568,20 @@ enum ReviewStatus {
 }
 
 model ReviewReport {
-  id              String      @id @default(cuid())
-  review_id       String
-  reporter_user_id String
-  reason          ReportReason
-  details         String?
-  status          ReportStatus @default(PENDING)
-  reviewed_by_user_id  String?
-  reviewed_at          DateTime?
-  resolution_note      String?
-  created_at      DateTime    @default(now())
+  id                  String       @id @default(cuid())
+  review_id           String
+  reporter_user_id    String
+  reason              ReportReason
+  details             String?
+  status              ReportStatus @default(PENDING)
+  reviewed_by_user_id String?
+  reviewed_at         DateTime?
+  resolution_note     String?
+  created_at          DateTime     @default(now())
 
-  review          Review      @relation(fields: [review_id], references: [id], onDelete: Cascade)
-  reporter        User        @relation("ReviewReporter", fields: [reporter_user_id], references: [id])
-  reviewed_by     User?       @relation("ReviewReportResolver", fields: [reviewed_by_user_id], references: [id])
+  review      Review @relation(fields: [review_id], references: [id], onDelete: Cascade)
+  reporter    User   @relation("ReviewReporter", fields: [reporter_user_id], references: [id])
+  reviewed_by User?  @relation("ReviewReportResolver", fields: [reviewed_by_user_id], references: [id])
 
   @@index([review_id])
   @@index([reporter_user_id])
@@ -1606,20 +1606,20 @@ enum ReportStatus {
 }
 
 model ReviewAggregate {
-  id              String      @id @default(cuid())
-  subject_type    ReviewSubjectType
-  subject_id      String
+  id           String            @id @default(cuid())
+  subject_type ReviewSubjectType
+  subject_id   String
 
-  total_reviews   Int         @default(0)
-  average_rating  Decimal     @default(0) @db.Decimal(3, 2)
-  rating_1_count  Int         @default(0)
-  rating_2_count  Int         @default(0)
-  rating_3_count  Int         @default(0)
-  rating_4_count  Int         @default(0)
-  rating_5_count  Int         @default(0)
+  total_reviews  Int     @default(0)
+  average_rating Decimal @default(0) @db.Decimal(3, 2)
+  rating_1_count Int     @default(0)
+  rating_2_count Int     @default(0)
+  rating_3_count Int     @default(0)
+  rating_4_count Int     @default(0)
+  rating_5_count Int     @default(0)
 
-  last_review_at  DateTime?
-  updated_at      DateTime    @updatedAt
+  last_review_at DateTime?
+  updated_at     DateTime  @updatedAt
 
   @@unique([subject_type, subject_id])
   @@index([subject_type, subject_id])
@@ -1633,41 +1633,41 @@ model ReviewAggregate {
 // ============================================================================
 
 model TrustCase {
-  id              String      @id @default(cuid())
-  case_number     String      @unique
+  id          String @id @default(cuid())
+  case_number String @unique
 
-  subject_type    TrustSubjectType
-  subject_id      String
+  subject_type TrustSubjectType
+  subject_id   String
 
-  title           String
-  summary         String
-  status          TrustCaseStatus  @default(NEW)
-  severity        TrustSeverity
+  title    String
+  summary  String
+  status   TrustCaseStatus @default(NEW)
+  severity TrustSeverity
 
-  assigned_to_user_id  String?
-  assigned_at          DateTime?
+  assigned_to_user_id String?
+  assigned_at         DateTime?
 
-  due_date            DateTime
+  due_date DateTime
 
-  resolved_at         DateTime?
-  resolution_summary  String?
-  resolution_action   TrustResolution?
+  resolved_at        DateTime?
+  resolution_summary String?
+  resolution_action  TrustResolution?
 
-  auto_created            Boolean     @default(false)
-  auto_creation_signal    String?
+  auto_created         Boolean @default(false)
+  auto_creation_signal String?
 
-  created_at      DateTime    @default(now())
+  created_at         DateTime @default(now())
   created_by_user_id String?
-  updated_at      DateTime    @updatedAt
+  updated_at         DateTime @updatedAt
 
-  parent_case_id  String?
+  parent_case_id String?
 
-  assigned_to     User?       @relation("TrustCaseAssignee", fields: [assigned_to_user_id], references: [id])
-  created_by      User?       @relation("TrustCaseCreator", fields: [created_by_user_id], references: [id])
-  parent_case     TrustCase?  @relation("follow_up_parent", fields: [parent_case_id], references: [id])
-  follow_ups      TrustCase[] @relation("follow_up_parent")
-  notes           TrustCaseNote[]
-  actions         TrustCaseAction[]
+  assigned_to User?             @relation("TrustCaseAssignee", fields: [assigned_to_user_id], references: [id])
+  created_by  User?             @relation("TrustCaseCreator", fields: [created_by_user_id], references: [id])
+  parent_case TrustCase?        @relation("follow_up_parent", fields: [parent_case_id], references: [id])
+  follow_ups  TrustCase[]       @relation("follow_up_parent")
+  notes       TrustCaseNote[]
+  actions     TrustCaseAction[]
 
   @@index([subject_type, subject_id])
   @@index([status, due_date])
@@ -1715,15 +1715,15 @@ enum TrustResolution {
 }
 
 model TrustCaseNote {
-  id              String      @id @default(cuid())
-  trust_case_id   String
-  author_user_id  String
-  visibility      NoteVisibility  @default(INTERNAL)
-  body            String
-  created_at      DateTime    @default(now())
+  id             String         @id @default(cuid())
+  trust_case_id  String
+  author_user_id String
+  visibility     NoteVisibility @default(INTERNAL)
+  body           String
+  created_at     DateTime       @default(now())
 
-  trust_case      TrustCase   @relation(fields: [trust_case_id], references: [id], onDelete: Cascade)
-  author          User        @relation(fields: [author_user_id], references: [id])
+  trust_case TrustCase @relation(fields: [trust_case_id], references: [id], onDelete: Cascade)
+  author     User      @relation(fields: [author_user_id], references: [id])
 
   @@index([trust_case_id, created_at])
   @@map("trust_case_notes")
@@ -1735,15 +1735,15 @@ enum NoteVisibility {
 }
 
 model TrustCaseAction {
-  id              String      @id @default(cuid())
-  trust_case_id   String
-  actor_user_id   String
-  action_type     TrustActionType
-  details         Json
-  created_at      DateTime    @default(now())
+  id            String          @id @default(cuid())
+  trust_case_id String
+  actor_user_id String
+  action_type   TrustActionType
+  details       Json
+  created_at    DateTime        @default(now())
 
-  trust_case      TrustCase   @relation(fields: [trust_case_id], references: [id], onDelete: Cascade)
-  actor           User        @relation(fields: [actor_user_id], references: [id])
+  trust_case TrustCase @relation(fields: [trust_case_id], references: [id], onDelete: Cascade)
+  actor      User      @relation(fields: [actor_user_id], references: [id])
 
   @@index([trust_case_id, created_at])
   @@index([actor_user_id])
@@ -1772,29 +1772,29 @@ enum TrustActionType {
 // ============================================================================
 
 model ProfileChangeRequest {
-  id              String      @id @default(cuid())
-  subject_type    ProfileSubjectType
-  subject_id      String
+  id           String             @id @default(cuid())
+  subject_type ProfileSubjectType
+  subject_id   String
 
-  requested_by_user_id  String
-  change_type           ProfileChangeType
-  field_changes         Json
-  supporting_docs       Json?
-  reason                String?
+  requested_by_user_id String
+  change_type          ProfileChangeType
+  field_changes        Json
+  supporting_docs      Json?
+  reason               String?
 
-  status                ProfileChangeStatus  @default(PENDING)
-  reviewed_by_user_id   String?
-  reviewed_at           DateTime?
-  decision_note         String?
-  applied_at            DateTime?
+  status              ProfileChangeStatus @default(PENDING)
+  reviewed_by_user_id String?
+  reviewed_at         DateTime?
+  decision_note       String?
+  applied_at          DateTime?
 
-  required_approver_tier  ApproverTier  @default(TS_ADMIN)
+  required_approver_tier ApproverTier @default(TS_ADMIN)
 
-  created_at      DateTime    @default(now())
-  updated_at      DateTime    @updatedAt
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
 
-  requested_by    User        @relation("ProfileChangeRequester", fields: [requested_by_user_id], references: [id], onDelete: Restrict)
-  reviewed_by     User?       @relation("ProfileChangeReviewer", fields: [reviewed_by_user_id], references: [id])
+  requested_by User  @relation("ProfileChangeRequester", fields: [requested_by_user_id], references: [id], onDelete: Restrict)
+  reviewed_by  User? @relation("ProfileChangeReviewer", fields: [reviewed_by_user_id], references: [id])
 
   @@index([subject_type, subject_id])
   @@index([status, created_at])
@@ -1841,10 +1841,10 @@ enum ApproverTier {
 // ============================================================================
 
 model WebhookLog {
-  id              String      @id @default(cuid())
-  direction       WebhookDirection
-  provider        String
-  event_type      String
+  id         String           @id @default(cuid())
+  direction  WebhookDirection
+  provider   String
+  event_type String
 
   request_url     String?
   request_headers Json?
@@ -1852,23 +1852,23 @@ model WebhookLog {
   response_status Int?
   response_body   Json?
 
-  status          WebhookStatus
+  status WebhookStatus
 
-  external_event_id    String?
-  idempotency_key      String?
+  external_event_id String?
+  idempotency_key   String?
 
-  retry_count     Int         @default(0)
-  next_retry_at   DateTime?
+  retry_count   Int       @default(0)
+  next_retry_at DateTime?
 
-  related_resource_type  String?
-  related_resource_id    String?
+  related_resource_type String?
+  related_resource_id   String?
 
-  received_at     DateTime    @default(now())
-  processed_at    DateTime?
-  duration_ms     Int?
+  received_at  DateTime  @default(now())
+  processed_at DateTime?
+  duration_ms  Int?
 
-  error_message   String?
-  error_stack     String?
+  error_message String?
+  error_stack   String?
 
   @@unique([provider, external_event_id])
   @@index([provider, direction, status])
@@ -1891,25 +1891,25 @@ enum WebhookStatus {
 }
 
 model OutboxEvent {
-  id              String      @id @default(cuid())
-  aggregate_type  String
-  aggregate_id    String
-  event_type      String
-  payload         Json
+  id             String @id @default(cuid())
+  aggregate_type String
+  aggregate_id   String
+  event_type     String
+  payload        Json
 
-  status          OutboxStatus  @default(PENDING)
+  status OutboxStatus @default(PENDING)
 
-  attempt_count   Int         @default(0)
+  attempt_count   Int       @default(0)
   last_attempt_at DateTime?
   next_attempt_at DateTime?
-  max_attempts    Int         @default(10)
+  max_attempts    Int       @default(10)
 
-  destinations    Json
+  destinations Json
 
-  dispatched_at   DateTime?
-  failed_reason   String?
+  dispatched_at DateTime?
+  failed_reason String?
 
-  created_at      DateTime    @default(now())
+  created_at DateTime @default(now())
 
   @@index([status, next_attempt_at])
   @@index([aggregate_type, aggregate_id])
@@ -1930,15 +1930,15 @@ enum OutboxStatus {
 // ============================================================================
 
 model KycApplication {
-  id              String      @id @default(cuid())
-  applicant_type  KycApplicantType
-  applicant_user_id  String
+  id                String           @id @default(cuid())
+  applicant_type    KycApplicantType
+  applicant_user_id String
 
-  target_tier     Int
-  current_tier    Int         @default(0)
+  target_tier  Int
+  current_tier Int @default(0)
 
-  status          KycApplicationStatus  @default(NOT_STARTED)
-  risk_tier       RiskTier?
+  status    KycApplicationStatus @default(NOT_STARTED)
+  risk_tier RiskTier?
 
   reviewer_user_id    String?
   review_started_at   DateTime?
@@ -1946,19 +1946,19 @@ model KycApplication {
   review_notes        String?
 
   last_reminder_sent_at DateTime?
-  reminder_count        Int        @default(0)
+  reminder_count        Int       @default(0)
 
   last_applicant_action_at DateTime?
   stale_at                 DateTime?
 
-  created_at      DateTime    @default(now())
-  submitted_at    DateTime?
-  expires_at      DateTime?
-  updated_at      DateTime    @updatedAt
+  created_at   DateTime  @default(now())
+  submitted_at DateTime?
+  expires_at   DateTime?
+  updated_at   DateTime  @updatedAt
 
-  applicant       User        @relation("KycApplicant", fields: [applicant_user_id], references: [id], onDelete: Restrict)
-  reviewer        User?       @relation("KycReviewer", fields: [reviewer_user_id], references: [id])
-  documents       KycDocument[]
+  applicant User          @relation("KycApplicant", fields: [applicant_user_id], references: [id], onDelete: Restrict)
+  reviewer  User?         @relation("KycReviewer", fields: [reviewer_user_id], references: [id])
+  documents KycDocument[]
 
   @@index([applicant_type, applicant_user_id])
   @@index([status, created_at])
@@ -1990,21 +1990,21 @@ enum RiskTier {
 }
 
 model KycDocument {
-  id              String      @id @default(cuid())
-  kyc_application_id   String
+  id                 String @id @default(cuid())
+  kyc_application_id String
 
-  doc_type        KycDocType
+  doc_type KycDocType
 
   storage_url     String
   file_name       String
   file_size_bytes Int
   mime_type       String
 
-  status          KycDocStatus  @default(UPLOADED)
-  reviewer_note   String?
+  status        KycDocStatus @default(UPLOADED)
+  reviewer_note String?
 
-  uploaded_at     DateTime    @default(now())
-  reviewed_at     DateTime?
+  uploaded_at DateTime  @default(now())
+  reviewed_at DateTime?
 
   kyc_application KycApplication @relation(fields: [kyc_application_id], references: [id], onDelete: Cascade)
 
@@ -2046,7 +2046,7 @@ model ProductVariant {
   created_at      DateTime @default(now())
   updated_at      DateTime @updatedAt
 
-  product         Product  @relation(fields: [product_id], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [product_id], references: [id], onDelete: Cascade)
 
   @@unique([product_id, sku])
   @@index([product_id])
@@ -2064,7 +2064,7 @@ model ProductImage {
   is_vendoora_photographed Boolean  @default(false)
   created_at               DateTime @default(now())
 
-  product                  Product  @relation(fields: [product_id], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [product_id], references: [id], onDelete: Cascade)
 
   @@index([product_id])
   @@map("product_images")

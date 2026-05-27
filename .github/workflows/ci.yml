@@ -157,6 +157,8 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Generate Prisma client (needed by the seed script)
+        run: pnpm -F @vendoora/db exec prisma generate
       - name: Apply all migrations
         run: pnpm -F @vendoora/db exec prisma migrate deploy
       - name: Run seed
@@ -196,6 +198,7 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - run: pnpm -F @vendoora/db exec prisma generate
       - run: pnpm -F @vendoora/db exec prisma migrate deploy
       - run: pnpm -F @vendoora/db exec prisma db seed
       - run: pnpm -r test
