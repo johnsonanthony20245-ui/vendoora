@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { prisma } from '@vendoora/db';
 import { searchProducts, type ProductCondition } from '../../lib/search';
+import { logSearchEvent } from '../../lib/search-analytics';
 import { ProductCard, type ProductCardData } from '../../components/ProductCard';
 import { SearchBox } from '../../components/SearchBox';
 
@@ -84,6 +85,15 @@ export default async function SearchPage({ searchParams }: PageProps) {
       select: { slug: true, name: true },
     }),
   ]);
+
+  // Fire-and-forget telemetry — never blocks the buyer.
+  await logSearchEvent({
+    q,
+    categorySlug: cat,
+    condition: cond,
+    totalCount: result.totalCount,
+    page,
+  });
 
   const cards: ProductCardData[] = result.products.map((p) => ({
     id: p.id,

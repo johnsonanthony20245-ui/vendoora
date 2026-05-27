@@ -197,6 +197,36 @@ model FeatureFlag {
   @@map("feature_flags")
 }
 
+// ============================================================================
+// Search telemetry (Polish_Phase_Addendum §2.3 search-analytics)
+//
+// One row per /search request. Powers the /admin/search-insights surface:
+//   - most-common queries (input to seeding next slice's products)
+//   - zero-result queries (catalog gaps)
+//   - filter usage (which categories/conditions are popular)
+// ============================================================================
+
+model SearchEvent {
+  id              String   @id @default(cuid())
+  // Normalised query — trimmed + lowercased. Empty string for browse-mode.
+  q               String
+  category_slug   String?
+  condition       String?
+  total_count     Int
+  page            Int      @default(1)
+  // Anonymous session id (vdr_cart cookie) — lets us roll up "did this
+  // session ever land on a result" without joining to User.
+  anon_session_id String?
+  // Authenticated buyer id when Clerk is wired and user is signed in.
+  user_id         String?
+  created_at      DateTime @default(now())
+
+  @@index([q])
+  @@index([total_count])
+  @@index([created_at])
+  @@map("search_events")
+}
+
 model FxRate {
   id              String   @id @default(cuid())
   from_currency   String
