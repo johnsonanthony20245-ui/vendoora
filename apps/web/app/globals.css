@@ -8,6 +8,11 @@
 
 @import "@vendoora/design-tokens/tokens.css";
 @import "tailwindcss";
+/* Prototype CSS, scoped to .proto-home only. Loaded AFTER Tailwind so the
+   scoped class rules win on specificity ties INSIDE the wrapper, but stay
+   physically inert everywhere else (the entire rule set is wrapped in
+   @scope, which CSS engines refuse to apply outside the scope root). */
+@import "./prototype-home.css";
 
 @theme {
   /* Brand color palette — Tailwind utilities like bg-blue-700, text-red-500 */
