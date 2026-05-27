@@ -13,6 +13,7 @@
 @import "./prototype-shell.css";    /* .proto-shell   — Header + Footer */
 @import "./prototype-home.css";     /* .proto-home    — homepage body */
 @import "./prototype-product.css";  /* .proto-product — product detail page */
+@import "./prototype-browse.css";   /* .proto-browse  — browse + search results */
 
 @theme {
   /* Brand color palette — Tailwind utilities like bg-blue-700, text-red-500 */
@@ -105,11 +106,15 @@
   color-scheme: dark;
 }
 
-/* ===== Base resets + body styling ===== */
+/* ===== Base resets + body styling =====
+   These re-apply the prototype's body defaults that I dropped when
+   scoping its global resets (we kept the * / html / body / a / button
+   resets out of prototype-home.css because they cascade everywhere).
+   The font-size: 14px and color/background tokens are what the
+   prototype's per-class rules (.product-card-name 14px, etc.) assume
+   as the base. */
 html {
   font-family: var(--font-sans);
-  color: var(--color-text-default);
-  background: var(--color-surface-base);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
@@ -117,5 +122,8 @@ html {
 body {
   margin: 0;
   min-height: 100vh;
-  line-height: var(--leading-normal);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--color-text);
+  background: var(--color-bg-app);
 }

@@ -17,6 +17,15 @@
    ============================================================ */
 
 @scope (.proto-product) {
+/* Page wrapper — max-width 1400px, centered, padded. Same as
+   prototype-home.css; added here so the PDP doesn't stretch
+   edge-to-edge on wide monitors. */
+.screen-container {
+  max-width: var(--max-content-w);
+  margin: 0 auto;
+  padding: var(--space-8);
+}
+
 .user-avatar {
   width: 32px;
   height: 32px;

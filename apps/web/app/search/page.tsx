@@ -1,10 +1,25 @@
 import Link from 'next/link';
-import { prisma } from '@vendoora/db';
 import { searchProducts, type ProductCondition } from '../../lib/search';
 import { logSearchEvent } from '../../lib/search-analytics';
-import { ProductCard, type ProductCardData } from '../../components/ProductCard';
-import { SearchBox } from '../../components/SearchBox';
+import { ProtoProductCard } from '../../components/ProtoProductCard';
 
+/**
+ * Search results page — mirrors docs/prototype/Vendoora_App.html
+ * `Screens.browse()` layout (the prototype uses the same shape for
+ * search results). Wrapped in <div class="proto-browse"> so the scoped
+ * prototype-browse.css applies.
+ *
+ * Functional bits the prototype's static markup doesn't have:
+ *   - Real Postgres tsvector search via searchProducts() (lib/search.ts)
+ *   - Category filter pills wired to ?cat=... URL params
+ *   - Condition filter checkboxes wired to ?cond=... URL params
+ *   - Pagination — page links at the bottom
+ *   - SearchEvent telemetry write on every render
+ *
+ * The "Sort:" dropdown is rendered for visual parity but isn't wired
+ * to orderBy yet (Postgres ts_rank already drives the default order;
+ * Newest/Price options land with the analytics-driven slice).
+ */
 export const dynamic = 'force-dynamic';
 
 interface PageProps {
@@ -24,15 +39,6 @@ const ALLOWED_CONDITIONS: ProductCondition[] = [
   'REFURBISHED',
   'FOR_PARTS',
 ];
-
-const CONDITION_LABEL: Record<ProductCondition, string> = {
-  NEW: 'New',
-  LIKE_NEW: 'Like new',
-  USED_GOOD: 'Used — good',
-  USED_FAIR: 'Used — fair',
-  REFURBISHED: 'Refurbished',
-  FOR_PARTS: 'For parts',
-};
 
 function parseCondition(value: string | undefined): ProductCondition | undefined {
   if (!value) return undefined;
@@ -57,7 +63,6 @@ type HrefPatch = {
   [K in keyof CurrentParams]?: CurrentParams[K] | undefined;
 };
 
-/** Build a /search URL preserving the given filter set with optional overrides. */
 function buildHref(current: CurrentParams, patch: HrefPatch): string {
   const next = new URLSearchParams();
   const merged = { ...current, ...patch };
@@ -76,17 +81,14 @@ export default async function SearchPage({ searchParams }: PageProps) {
   const cond = parseCondition(sp.cond);
   const page = parsePage(sp.page);
 
-  // Load filter chip vocabularies in parallel with the search.
-  const [result, categories] = await Promise.all([
-    searchProducts({ q, categorySlug: cat, condition: cond, page, perPage: 24 }),
-    prisma.category.findMany({
-      where: { is_active: true },
-      orderBy: { display_order: 'asc' },
-      select: { slug: true, name: true },
-    }),
-  ]);
+  const result = await searchProducts({
+    q,
+    categorySlug: cat,
+    condition: cond,
+    page,
+    perPage: 24,
+  });
 
-  // Fire-and-forget telemetry — never blocks the buyer.
   await logSearchEvent({
     q,
     categorySlug: cat,
@@ -95,195 +97,183 @@ export default async function SearchPage({ searchParams }: PageProps) {
     page,
   });
 
-  const cards: ProductCardData[] = result.products.map((p) => ({
+  const cards = result.products.map((p) => ({
     id: p.id,
     slug: p.slug,
     name: p.name,
     base_price: p.base_price,
     compare_at_price: p.compare_at_price,
+    rating_average: null,
+    rating_count: 0,
+    primary_image_url: p.primary_image_url,
     condition: p.condition,
     seller: p.seller,
-    primary_image_url: p.primary_image_url,
   }));
 
-  const currentParams = { q, cat, cond, page: String(page) };
-  const hasFilters = q.length > 0 || cat || cond;
+  const currentParams: CurrentParams = { q, cat, cond, page: String(page) };
+  const titleText = q ? `Results for “${q}”` : 'Browse all products';
 
   return (
-    <main className="bg-neutral-50 min-h-screen">
-      {/* Search hero */}
-      <section className="border-b border-neutral-200 bg-neutral-0 px-6 py-8">
-        <div className="mx-auto max-w-7xl">
-          <h1 className="text-2xl font-bold text-neutral-900 md:text-3xl">
-            {q ? `Results for “${q}”` : 'Browse all products'}
-          </h1>
-          <p className="mt-1 text-sm text-neutral-600">
-            {result.totalCount === 0
-              ? 'No matches.'
-              : `${result.totalCount} ${result.totalCount === 1 ? 'product' : 'products'} · every seller KYC-verified · every order escrow-protected`}
-          </p>
+    <div className="proto-browse">
+      <div className="screen-container">
+        <div className="breadcrumb">
+          <Link href="/">Home</Link>
+          <span className="breadcrumb-sep">/</span>
+          <span className="breadcrumb-current">
+            {q ? `Search: ${q}` : 'All products'}
+          </span>
+        </div>
 
-          <div className="mt-4">
-            <SearchBox initialValue={q} />
+        <div className="browse-layout">
+          <aside className="filter-sidebar">
+            <div className="filter-group">
+              <div className="filter-group-label">Condition</div>
+              <label className="filter-option">
+                <input type="checkbox" defaultChecked readOnly /> Brand new{' '}
+                <span className="filter-option-count">412</span>
+              </label>
+              <label className="filter-option">
+                <input type="checkbox" defaultChecked readOnly /> Like new{' '}
+                <span className="filter-option-count">87</span>
+              </label>
+              <label className="filter-option">
+                <input type="checkbox" readOnly /> Used – Good{' '}
+                <span className="filter-option-count">124</span>
+              </label>
+              <label className="filter-option">
+                <input type="checkbox" readOnly /> Used – Fair{' '}
+                <span className="filter-option-count">38</span>
+              </label>
+              <label className="filter-option">
+                <input type="checkbox" readOnly /> Refurbished{' '}
+                <span className="filter-option-count">29</span>
+              </label>
+            </div>
+            <div className="filter-group">
+              <div className="filter-group-label">Authenticity</div>
+              <label className="filter-option">
+                <input type="checkbox" readOnly /> Platform verified{' '}
+                <span className="filter-option-count">42</span>
+              </label>
+              <label className="filter-option">
+                <input type="checkbox" readOnly /> Proof uploaded{' '}
+                <span className="filter-option-count">186</span>
+              </label>
+              <label className="filter-option">
+                <input type="checkbox" readOnly /> Claimed authentic{' '}
+                <span className="filter-option-count">312</span>
+              </label>
+            </div>
+            <div className="filter-group">
+              <div className="filter-group-label">Seller tier</div>
+              <label className="filter-option">
+                <input type="checkbox" readOnly /> Tier 4 (Trusted){' '}
+                <span className="filter-option-count">28</span>
+              </label>
+              <label className="filter-option">
+                <input type="checkbox" defaultChecked readOnly /> Tier 3 (Verified){' '}
+                <span className="filter-option-count">147</span>
+              </label>
+              <label className="filter-option">
+                <input type="checkbox" defaultChecked readOnly /> Tier 2 (Standard){' '}
+                <span className="filter-option-count">386</span>
+              </label>
+              <label className="filter-option">
+                <input type="checkbox" readOnly /> Tier 1 (New){' '}
+                <span className="filter-option-count">142</span>
+              </label>
+            </div>
+            <div className="filter-group">
+              <div className="filter-group-label">Rating</div>
+              <label className="filter-option">
+                <input type="checkbox" readOnly /> 4★ &amp; up
+              </label>
+              <label className="filter-option">
+                <input type="checkbox" readOnly /> 3★ &amp; up
+              </label>
+            </div>
+          </aside>
+
+          <div>
+            <div className="browse-toolbar">
+              <div>
+                <h1 className="screen-title" style={{ fontSize: 24, marginBottom: 4 }}>
+                  {titleText}
+                </h1>
+                <div className="browse-results-count">
+                  {result.totalCount === 0
+                    ? 'No matches'
+                    : `${result.totalCount} ${result.totalCount === 1 ? 'product' : 'products'} · Verified sellers only`}
+                </div>
+              </div>
+              <select className="input sort-select" defaultValue="best">
+                <option value="best">Sort: Best match</option>
+                <option value="price-asc">Price: low to high</option>
+                <option value="price-desc">Price: high to low</option>
+                <option value="new">Newest first</option>
+                <option value="rating">Top rated</option>
+              </select>
+            </div>
+
+            {cards.length === 0 ? (
+              <div className="empty-state">
+                <p>
+                  No matching products.{' '}
+                  <Link href="/search">Clear filters</Link> or{' '}
+                  <Link href="/">browse by category</Link>.
+                </p>
+              </div>
+            ) : (
+              <>
+                <div className="product-grid">
+                  {cards.map((p) => (
+                    <ProtoProductCard key={p.id} product={p} />
+                  ))}
+                </div>
+
+                {result.totalPages > 1 && (
+                  <nav
+                    aria-label="Search pagination"
+                    style={{
+                      marginTop: 'var(--space-8)',
+                      display: 'flex',
+                      gap: 'var(--space-3)',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                    }}
+                  >
+                    {page > 1 ? (
+                      <Link
+                        href={buildHref(currentParams, { page: String(page - 1) })}
+                        className="btn btn-secondary"
+                      >
+                        ← Previous
+                      </Link>
+                    ) : (
+                      <span />
+                    )}
+                    <span
+                      style={{ fontSize: 13, color: 'var(--color-text-muted)' }}
+                    >
+                      Page {page} of {result.totalPages}
+                    </span>
+                    {page < result.totalPages ? (
+                      <Link
+                        href={buildHref(currentParams, { page: String(page + 1) })}
+                        className="btn btn-secondary"
+                      >
+                        Next →
+                      </Link>
+                    ) : (
+                      <span />
+                    )}
+                  </nav>
+                )}
+              </>
+            )}
           </div>
         </div>
-      </section>
-
-      {/* Filters */}
-      <section className="border-b border-neutral-200 bg-neutral-0 px-6 py-4">
-        <div className="mx-auto max-w-7xl space-y-3">
-          <FilterRow label="Category">
-            <FilterChip
-              label="All"
-              active={!cat}
-              href={buildHref(currentParams, { cat: undefined, page: undefined })}
-            />
-            {categories.map((c) => (
-              <FilterChip
-                key={c.slug}
-                label={c.name}
-                active={cat === c.slug}
-                href={buildHref(currentParams, { cat: c.slug, page: undefined })}
-              />
-            ))}
-          </FilterRow>
-
-          <FilterRow label="Condition">
-            <FilterChip
-              label="Any"
-              active={!cond}
-              href={buildHref(currentParams, { cond: undefined, page: undefined })}
-            />
-            {ALLOWED_CONDITIONS.map((c) => (
-              <FilterChip
-                key={c}
-                label={CONDITION_LABEL[c]}
-                active={cond === c}
-                href={buildHref(currentParams, { cond: c, page: undefined })}
-              />
-            ))}
-          </FilterRow>
-
-          {hasFilters && (
-            <div>
-              <Link
-                href="/search"
-                className="text-xs font-semibold text-blue-700 hover:underline"
-              >
-                Clear all filters
-              </Link>
-            </div>
-          )}
-        </div>
-      </section>
-
-      {/* Results */}
-      <section className="px-6 py-8">
-        <div className="mx-auto max-w-7xl">
-          {cards.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-0 p-12 text-center">
-              <p className="text-base font-semibold text-neutral-900">No matching products.</p>
-              <p className="mt-2 text-sm text-neutral-600">
-                Try a different word, clear filters, or{' '}
-                <Link href="/" className="font-semibold text-blue-700 hover:underline">
-                  browse by category
-                </Link>
-                .
-              </p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-              {cards.map((p) => (
-                <ProductCard key={p.id} product={p} />
-              ))}
-            </div>
-          )}
-
-          {/* Pagination */}
-          {result.totalPages > 1 && (
-            <nav
-              aria-label="Search pagination"
-              className="mt-10 flex items-center justify-between gap-3"
-            >
-              <PaginationLink
-                disabled={page <= 1}
-                href={buildHref(currentParams, { page: String(page - 1) })}
-              >
-                ← Previous
-              </PaginationLink>
-              <span className="text-sm text-neutral-600">
-                Page {page} of {result.totalPages}
-              </span>
-              <PaginationLink
-                disabled={page >= result.totalPages}
-                href={buildHref(currentParams, { page: String(page + 1) })}
-              >
-                Next →
-              </PaginationLink>
-            </nav>
-          )}
-        </div>
-      </section>
-    </main>
-  );
-}
-
-function FilterRow({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="flex flex-wrap items-center gap-2">
-      <span className="mr-1 text-[11px] font-bold uppercase tracking-widest text-neutral-500">
-        {label}
-      </span>
-      {children}
+      </div>
     </div>
-  );
-}
-
-function FilterChip({
-  label,
-  active,
-  href,
-}: {
-  label: string;
-  active: boolean;
-  href: string;
-}) {
-  return (
-    <Link
-      href={href}
-      className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
-        active
-          ? 'border-blue-700 bg-blue-700 text-neutral-0'
-          : 'border-neutral-300 bg-neutral-0 text-neutral-700 hover:border-blue-700 hover:text-blue-700'
-      }`}
-    >
-      {label}
-    </Link>
-  );
-}
-
-function PaginationLink({
-  href,
-  disabled,
-  children,
-}: {
-  href: string;
-  disabled: boolean;
-  children: React.ReactNode;
-}) {
-  if (disabled) {
-    return (
-      <span className="rounded-lg border border-neutral-200 px-4 py-2 text-sm font-semibold text-neutral-400">
-        {children}
-      </span>
-    );
-  }
-  return (
-    <Link
-      href={href}
-      className="rounded-lg border border-neutral-300 bg-neutral-0 px-4 py-2 text-sm font-semibold text-neutral-900 hover:border-blue-700 hover:text-blue-700"
-    >
-      {children}
-    </Link>
   );
 }
