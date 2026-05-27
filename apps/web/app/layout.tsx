@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { Inter_Tight, Fraunces, JetBrains_Mono } from 'next/font/google';
-import { Header } from '../components/Header';
+import { ProtoHeader } from '../components/ProtoHeader';
+import { ProtoFooter } from '../components/ProtoFooter';
 import { IS_CLERK_ENABLED } from '../lib/auth';
 import './globals.css';
 
@@ -50,8 +51,17 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
         <script dangerouslySetInnerHTML={{ __html: themeBootstrap }} />
       </head>
       <body>
-        <Header />
-        {children}
+        {/* .proto-shell wraps everything so the shell-scoped prototype CSS
+            (apps/web/app/prototype-shell.css) takes effect for the Header
+            and Footer. Page bodies are inside the shell-main and can layer
+            their own .proto-X scope (e.g. .proto-home) as needed. */}
+        <div className="proto-shell app-shell">
+          <ProtoHeader />
+          <main className="shell-main" id="shell-main">
+            {children}
+          </main>
+          <ProtoFooter />
+        </div>
       </body>
     </html>
   );
