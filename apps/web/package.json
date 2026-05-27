@@ -12,6 +12,7 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
+    "@clerk/nextjs": "^7.4.1",
     "@vendoora/db": "workspace:*",
     "@vendoora/design-tokens": "workspace:*",
     "@vendoora/types": "workspace:*",
@@ -20,22 +21,22 @@
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
-    "@vendoora/config": "workspace:*",
     "@eslint/eslintrc": "^3.2.0",
     "@eslint/js": "^9.15.0",
+    "@tailwindcss/postcss": "^4.0.0",
+    "@types/bcryptjs": "^2.4.6",
     "@types/node": "^22.9.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "@vendoora/config": "workspace:*",
+    "bcryptjs": "^2.4.3",
+    "dotenv": "^16.4.5",
     "eslint": "^9.15.0",
     "eslint-config-next": "^15.0.3",
-    "typescript": "^5.6.3",
-    "vitest": "^2.1.5",
-    "vite-tsconfig-paths": "^5.1.3",
-    "dotenv": "^16.4.5",
-    "tailwindcss": "^4.0.0",
-    "@tailwindcss/postcss": "^4.0.0",
     "postcss": "^8.4.49",
-    "bcryptjs": "^2.4.3",
-    "@types/bcryptjs": "^2.4.6"
+    "tailwindcss": "^4.0.0",
+    "typescript": "^5.6.3",
+    "vite-tsconfig-paths": "^5.1.3",
+    "vitest": "^2.1.5"
   }
 }

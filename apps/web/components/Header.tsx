@@ -3,6 +3,7 @@ import { BRAND_NAME } from '@vendoora/types';
 import { getCartCount } from '../app/actions/cart';
 import { SearchBox } from './SearchBox';
 import { ThemeToggle } from './ThemeToggle';
+import { HeaderAuthSlot } from './HeaderAuthSlot';
 
 export async function Header() {
   const cartCount = await getCartCount();
@@ -33,6 +34,7 @@ export async function Header() {
 
         <div className="order-2 flex shrink-0 items-center gap-2 md:order-4">
           <ThemeToggle />
+          <HeaderAuthSlot />
           <Link
             href="/cart"
             aria-label={`Cart (${cartCount} ${cartCount === 1 ? 'item' : 'items'})`}

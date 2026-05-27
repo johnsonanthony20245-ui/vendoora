@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { Inter_Tight, Fraunces, JetBrains_Mono } from 'next/font/google';
 import { Header } from '../components/Header';
+import { IS_CLERK_ENABLED } from '../lib/auth';
 import './globals.css';
 
 // Inter Tight — workhorse, 95% of the system (Build_Prompt §9 / brand spec).
@@ -38,8 +39,8 @@ export const metadata = {
 // flash-of-light. The script is intentionally minimal and self-contained.
 const themeBootstrap = `try{var t=localStorage.getItem('vdr-theme');if(!t){t=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}document.documentElement.dataset.theme=t;}catch(e){}`;
 
-export default function RootLayout({ children }: { children: ReactNode }) {
-  return (
+export default async function RootLayout({ children }: { children: ReactNode }) {
+  const shell = (
     <html
       lang="en"
       className={`${interTight.variable} ${fraunces.variable} ${jetbrainsMono.variable}`}
@@ -54,4 +55,11 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       </body>
     </html>
   );
+
+  // Clerk wraps the entire app when keys are configured. Without keys we
+  // render the shell directly so the rest of the marketplace works
+  // unauthenticated.
+  if (!IS_CLERK_ENABLED) return shell;
+  const { ClerkProvider } = await import('@clerk/nextjs');
+  return <ClerkProvider>{shell}</ClerkProvider>;
 }
