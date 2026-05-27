@@ -136,31 +136,33 @@ export async function searchProducts(filters: SearchFilters = {}): Promise<Searc
 
   // Query path: rank by ts_rank, then load + re-order.
   //
-  // The IN/OUT projection here returns just ids and ranks; we load the full
-  // structured product separately and re-order to match the rank order.
-  const rawFilters: Prisma.Sql[] = [];
-  if (filters.categorySlug) {
-    rawFilters.push(Prisma.sql`AND c.slug = ${filters.categorySlug}`);
-  }
-  if (filters.condition) {
-    rawFilters.push(Prisma.sql`AND p.condition::text = ${filters.condition}`);
-  }
-  const filterSql = rawFilters.length > 0 ? Prisma.join(rawFilters, ' ') : Prisma.empty;
+  // We compose the whole query as one Prisma.Sql and pass it as the single
+  // argument to $queryRaw (not the tagged-template form). This avoids subtle
+  // parameter-numbering bugs that surfaced under Next.js dev's SWC build but
+  // not under vitest's tsx/esbuild — same code, two slightly different
+  // template-tag emit paths.
+  const categoryFilter = filters.categorySlug
+    ? Prisma.sql`AND c.slug = ${filters.categorySlug}`
+    : Prisma.empty;
+  const conditionFilter = filters.condition
+    ? Prisma.sql`AND p.condition::text = ${filters.condition}`
+    : Prisma.empty;
 
-  const ranked = await prisma.$queryRaw<Array<{ id: string }>>`
+  const rankExpr = Prisma.sql`ts_rank(p."search_tsv", websearch_to_tsquery('english', ${q}))`;
+
+  const rankedQuery = Prisma.sql`
     SELECT p.id
     FROM "products" p
     INNER JOIN "categories" c ON p."category_id" = c.id
-    WHERE
-      p."status"::text = 'PUBLISHED'
+    WHERE p."status"::text = 'PUBLISHED'
       AND p."moderation_status"::text = 'APPROVED'
       AND p."deleted_at" IS NULL
       AND p."search_tsv" @@ websearch_to_tsquery('english', ${q})
-      ${filterSql}
-    ORDER BY
-      ts_rank(p."search_tsv", websearch_to_tsquery('english', ${q})) DESC,
-      p."created_at" DESC
+      ${categoryFilter}
+      ${conditionFilter}
+    ORDER BY ${rankExpr} DESC, p."created_at" DESC
   `;
+  const ranked = await prisma.$queryRaw<Array<{ id: string }>>(rankedQuery);
 
   const totalCount = ranked.length;
   if (totalCount === 0) {
