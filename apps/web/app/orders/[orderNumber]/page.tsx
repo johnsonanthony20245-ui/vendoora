@@ -120,14 +120,12 @@ export default async function OrderTrackingPage({ params }: PageProps) {
                   >
                     How escrow release works
                   </Link>
-                  <button
-                    type="button"
-                    disabled
-                    className="rounded-lg border border-neutral-300 bg-neutral-100 px-3 py-1.5 text-xs font-semibold text-neutral-500"
-                    title="Dispute flow lands in a future slice"
+                  <Link
+                    href={`/orders/${order.order_number}/dispute`}
+                    className="rounded-lg border border-red-300 bg-neutral-0 px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50"
                   >
-                    Open a dispute (coming soon)
-                  </button>
+                    Open a dispute
+                  </Link>
                 </div>
               </div>
             )}
