@@ -14,6 +14,7 @@
 @import "./prototype-home.css";     /* .proto-home    — homepage body */
 @import "./prototype-product.css";  /* .proto-product — product detail page */
 @import "./prototype-browse.css";   /* .proto-browse  — browse + search results */
+@import "./prototype-cart.css";     /* .proto-cart    — cart, checkout, confirmation */
 
 @theme {
   /* Brand color palette — Tailwind utilities like bg-blue-700, text-red-500 */

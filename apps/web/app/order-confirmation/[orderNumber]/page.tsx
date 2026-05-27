@@ -1,9 +1,24 @@
+import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { cookies } from 'next/headers';
-import Link from 'next/link';
 import { prisma } from '@vendoora/db';
-import { BRAND_NAME } from '@vendoora/types';
 
+/**
+ * Order confirmation — mirrors docs/prototype/Vendoora_App.html
+ * `Screens.confirmed()`. Wrapped in <div class="proto-cart"> so the
+ * scoped prototype-cart.css (.confirmation-* rules) applies.
+ *
+ * Layout matches the prototype:
+ *   confirmation-hero (big check + title + escrow subtitle + order id pill
+ *     + Track / Keep shopping buttons)
+ *   "What happens next" card with 4 numbered steps
+ *
+ * Step 1 (Payment received) is checkmarked because the order has been
+ * placed. Steps 2-4 are inactive numbered circles.
+ *
+ * The 6-digit delivery code reveal lives below the hero — it's read from
+ * the one-shot vdr_dc_<order_number> cookie placed by placeOrder().
+ */
 export const dynamic = 'force-dynamic';
 
 interface PageProps {
@@ -25,158 +40,193 @@ export default async function OrderConfirmationPage({ params }: PageProps) {
   const jar = await cookies();
   const deliveryCodePlaintext = jar.get(`vdr_dc_${order.order_number}`)?.value ?? null;
 
-  const sellersCount = order.escrow_holds.filter((h) => h.beneficiary_type === 'SELLER').length;
-
   return (
-    <main className="bg-neutral-50 min-h-screen">
-      {/* Success hero */}
-      <section className="bg-emerald-700 px-6 py-12 text-neutral-0 md:py-16">
-        <div className="mx-auto max-w-5xl">
-          <p className="text-xs font-bold uppercase tracking-widest text-emerald-100">
-            Paid into escrow
+    <div className="proto-cart">
+      <div className="screen-container">
+        <div className="confirmation-hero">
+          <div className="confirmation-check">
+            <svg
+              width="36"
+              height="36"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="3"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
+          </div>
+          <h1 className="confirmation-title">Order placed!</h1>
+          <p className="confirmation-subtitle">
+            Your payment of{' '}
+            <strong>${Number(order.total_amount).toFixed(2)}</strong> is now held safely
+            in escrow.
           </p>
-          <h1 className="mt-2 text-3xl font-bold md:text-5xl">
-            Your order is on its way.
-          </h1>
-          <p className="mt-3 text-base text-emerald-100 md:text-lg">
-            Order <span className="font-mono">{order.order_number}</span> &middot;
-            ${Number(order.total_amount).toFixed(2)} held safely.{' '}
-            {sellersCount > 0 && `${sellersCount} seller${sellersCount > 1 ? 's' : ''} will be paid only after you confirm delivery.`}
-          </p>
-        </div>
-      </section>
-
-      {/* Delivery code */}
-      <section className="border-b border-neutral-200 bg-neutral-0 px-6 py-12">
-        <div className="mx-auto max-w-5xl">
-          <p className="text-xs font-bold uppercase tracking-widest text-red-600">
-            Your 6-digit delivery code
-          </p>
-          <h2 className="mt-2 text-xl font-semibold text-neutral-900">
-            Give this code to the driver only when your order arrives and looks right.
-          </h2>
-
-          {deliveryCodePlaintext ? (
-            <div className="mt-6 inline-block rounded-xl border-2 border-red-200 bg-red-50 px-8 py-5">
-              <div
-                className="text-5xl font-bold tracking-widest text-red-700"
-                style={{ fontFamily: 'var(--font-jetbrains-mono)' }}
-              >
-                {deliveryCodePlaintext}
-              </div>
-            </div>
-          ) : (
-            <div className="mt-6 inline-block rounded-xl border-2 border-neutral-200 bg-neutral-100 px-8 py-5 text-neutral-500">
-              <span style={{ fontFamily: 'var(--font-jetbrains-mono)' }}>· · · · · ·</span>
-              <p className="mt-2 text-xs">
-                Code already sent. Check your phone (SMS in production).
-              </p>
-            </div>
-          )}
-
-          <p className="mt-4 max-w-xl text-sm text-neutral-600">
-            <strong>In production this code is sent by SMS.</strong> We&apos;re showing it inline
-            here while SMS integration ({BRAND_NAME} uses Africa&apos;s Talking + Twilio) is wired
-            up in a later slice. Three failed attempts at the door triggers Trust &amp; Safety
-            escalation (Build_Prompt §10.7).
-          </p>
-        </div>
-      </section>
-
-      {/* What happens next */}
-      <section className="bg-blue-700 px-6 py-12 text-neutral-0 md:py-16">
-        <div className="mx-auto max-w-5xl">
-          <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-blue-200">
-            What happens next
-          </p>
-          <h2
-            className="text-2xl font-medium md:text-3xl"
-            style={{ fontFamily: 'var(--font-fraunces)' }}
-          >
-            Four steps to <span className="italic text-red-200">verified-at-the-door</span> delivery.
-          </h2>
-
-          <ol className="mt-8 grid gap-4 md:grid-cols-4">
-            {[
-              { n: 1, title: 'Seller prepares', desc: 'They have 24 hours to accept and pack the order.' },
-              { n: 2, title: 'Driver picks up', desc: 'Your delivery code is generated and sent by SMS.' },
-              { n: 3, title: 'Driver arrives', desc: 'Inspect the order. Hand over the code only when satisfied.' },
-              { n: 4, title: 'Seller paid', desc: 'Escrow releases automatically 24 hours after delivery.' },
-            ].map((step) => (
-              <li key={step.n} className="rounded-xl border border-blue-500 bg-blue-800 p-4">
-                <div className="text-xl font-bold text-red-200" style={{ fontFamily: 'var(--font-jetbrains-mono)' }}>
-                  0{step.n}
-                </div>
-                <div className="mt-2 text-base font-semibold">{step.title}</div>
-                <div className="mt-1 text-sm text-blue-100">{step.desc}</div>
-              </li>
-            ))}
-          </ol>
-        </div>
-      </section>
-
-      {/* Order summary */}
-      <section className="px-6 py-12">
-        <div className="mx-auto max-w-5xl">
-          <h2 className="text-xl font-bold text-neutral-900">Order summary</h2>
-          <ul className="mt-4 space-y-3 rounded-xl border border-neutral-200 bg-neutral-0 p-4">
-            {order.items.map((item) => (
-              <li key={item.id} className="flex justify-between gap-3 border-b border-neutral-100 pb-3 last:border-0 last:pb-0">
-                <div>
-                  <div className="text-sm font-semibold text-neutral-900">
-                    {(item.product_snapshot as { name?: string })?.name ?? 'Item'}
-                  </div>
-                  <div className="text-xs text-neutral-600">
-                    {item.seller.business_name} &middot; Qty {item.quantity}
-                  </div>
-                </div>
-                <div className="text-sm font-semibold text-neutral-900">
-                  ${Number(item.subtotal).toFixed(2)}
-                </div>
-              </li>
-            ))}
-          </ul>
-
-          <div className="mt-6 rounded-xl border border-neutral-200 bg-neutral-0 p-4 text-sm">
-            <Row label="Subtotal" value={`$${Number(order.subtotal).toFixed(2)}`} />
-            <Row label="Shipping" value={`$${Number(order.shipping_fee).toFixed(2)}`} />
-            <div className="mt-2 border-t border-neutral-200 pt-2 flex justify-between text-base">
-              <span className="font-bold text-neutral-900">Total paid into escrow</span>
-              <span className="font-bold text-neutral-900">${Number(order.total_amount).toFixed(2)}</span>
-            </div>
+          <div className="confirmation-order-id">
+            <span style={{ color: 'var(--color-text-muted)' }}>Order</span>
+            <span>{order.order_number}</span>
           </div>
 
-          <div className="mt-8 flex flex-wrap gap-3">
+          <div
+            style={{
+              marginTop: 'var(--space-6)',
+              display: 'flex',
+              gap: 'var(--space-3)',
+              justifyContent: 'center',
+              flexWrap: 'wrap',
+            }}
+          >
             <Link
               href={`/orders/${order.order_number}`}
-              className="rounded-lg bg-blue-700 px-5 py-2.5 text-sm font-semibold text-neutral-0 hover:bg-blue-800"
+              className="btn btn-primary"
             >
-              Track your order →
+              Track your order
             </Link>
-            <Link
-              href="/"
-              className="rounded-lg border border-neutral-300 bg-neutral-0 px-5 py-2.5 text-sm font-semibold text-neutral-900 hover:bg-neutral-100"
-            >
-              Keep browsing
-            </Link>
-            <Link
-              href="/trust-center"
-              className="rounded-lg border border-neutral-300 bg-neutral-0 px-5 py-2.5 text-sm font-semibold text-neutral-900 hover:bg-neutral-100"
-            >
-              How protection works
+            <Link href="/" className="btn btn-secondary">
+              Keep shopping
             </Link>
           </div>
         </div>
-      </section>
-    </main>
+
+        {/* Delivery code reveal — only on the very first paint after placeOrder
+            stores the plaintext in vdr_dc_<order> cookie; the cookie clears
+            on subsequent visits so the code never persists. */}
+        {deliveryCodePlaintext && (
+          <div
+            className="card"
+            style={{
+              marginBottom: 'var(--space-4)',
+              borderColor: 'var(--color-action-primary)',
+              background:
+                'linear-gradient(135deg, rgba(26,61,174,0.04) 0%, var(--color-bg-surface) 100%)',
+            }}
+          >
+            <div
+              style={{
+                fontSize: 11,
+                fontWeight: 700,
+                textTransform: 'uppercase',
+                letterSpacing: '0.08em',
+                color: 'var(--color-accent)',
+                marginBottom: 'var(--space-2)',
+              }}
+            >
+              🔐 YOUR 6-DIGIT DELIVERY CODE
+            </div>
+            <div
+              style={{
+                fontFamily: 'var(--font-mono)',
+                fontSize: 36,
+                fontWeight: 800,
+                letterSpacing: 12,
+                color: 'var(--color-action-primary)',
+                lineHeight: 1.2,
+              }}
+            >
+              {deliveryCodePlaintext.split('').join(' ')}
+            </div>
+            <p
+              style={{
+                fontSize: 12,
+                color: 'var(--color-text-muted)',
+                marginTop: 'var(--space-2)',
+                lineHeight: 1.5,
+              }}
+            >
+              Save this somewhere safe. You&apos;ll need it when the driver arrives to
+              hand over the package. Vendoora will also send it by SMS once the
+              seller marks the order as shipped.
+            </p>
+          </div>
+        )}
+
+        <div className="card" style={{ marginBottom: 'var(--space-4)' }}>
+          <h3
+            style={{
+              fontSize: 15,
+              fontWeight: 700,
+              marginBottom: 'var(--space-3)',
+            }}
+          >
+            What happens next
+          </h3>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '32px 1fr',
+              gap: 'var(--space-3) var(--space-4)',
+              alignItems: 'start',
+            }}
+          >
+            <div
+              className="confirmation-check"
+              style={{ width: 32, height: 32 }}
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="3"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+            </div>
+            <div>
+              <strong>Payment received and held safely</strong>
+              <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>
+                Your money is in escrow — the seller has not been paid yet.
+              </div>
+            </div>
+
+            <NumberCircle n={2} />
+            <div>
+              <strong>Seller prepares your order</strong>
+              <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>
+                Usually within 24 hours. You&apos;ll get an SMS when a driver picks up.
+              </div>
+            </div>
+
+            <NumberCircle n={3} />
+            <div>
+              <strong>You receive your 6-digit delivery code</strong>
+              <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>
+                Sent via SMS the moment the driver picks up. Only you see it.
+              </div>
+            </div>
+
+            <NumberCircle n={4} />
+            <div>
+              <strong>Code match = delivery confirmed = payment released</strong>
+              <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>
+                Driver enters your code at your door. If it doesn&apos;t match, payment
+                stays in escrow.
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
-function Row({ label, value }: { label: string; value: string }) {
+function NumberCircle({ n }: { n: number }) {
   return (
-    <div className="flex justify-between">
-      <span className="text-neutral-600">{label}</span>
-      <span className="font-semibold text-neutral-900">{value}</span>
+    <div
+      className="confirmation-check"
+      style={{
+        width: 32,
+        height: 32,
+        background: 'var(--color-bg-app)',
+        color: 'var(--color-text-muted)',
+      }}
+    >
+      <span style={{ fontWeight: 700 }}>{n}</span>
     </div>
   );
 }
