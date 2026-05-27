@@ -61,35 +61,48 @@ runs every PR and every push to `main`.
   in-progress: true` and `--frozen-lockfile` cache warmth).
 - First push of 23 commits will take a few minutes to surface in the UI.
 
-## How to publish
+## Publication record (2026-05-27)
 
-The repo isn't pushed yet — `gh` CLI is not installed on the workstation that
-authored these commits. Two options to publish:
+Published the same day this ADR was authored.
 
-### Option A: Install `gh` and run
+- **Repo:** https://github.com/johnsonanthony20245-ui/vendoora
+- **Owner:** johnsonanthony20245-ui (johnsonanthony20245@gmail.com)
+- **Initial visibility:** private — blocked branch protection on GitHub Free.
+- **Flip to public:** same session, after adding `LICENSE` (AGPL-3.0) and a
+  README pitch with a CI badge.
+- **Branch protection on `main`:** required status check `10 · CI summary`,
+  required PRs (0 approvals — sole maintainer), required linear history,
+  required conversation resolution, no force pushes, no deletions.
+  `enforce_admins=false` so emergency hot-fixes by the sole admin remain
+  possible without coordination.
+- **Auth on this workstation:** Git Credential Manager (installed by GitHub
+  Desktop) carries the OAuth token; `gh` CLI is not installed. Future pushes
+  over HTTPS use the credential helper automatically.
+
+### Why AGPL-3.0 instead of MIT
+The trust mechanic — escrow holds, KYC tiers, the delivery-code rules — is
+the product. A permissive license would let any operator fork it and run a
+weaker version with the same brand promise. AGPL requires anyone running a
+modified Vendoora over a network to publish their changes, which keeps that
+mechanic accountable in the wild. Commercial licensing remains available for
+closed-source forks.
+
+## Re-publish playbook (other workstations / contributors)
+
+To clone + work against this repo from a fresh machine:
+
 ```bash
-# Install on Windows
-winget install --id GitHub.cli
-
-# Authenticate (browser-based)
-gh auth login
-
-# Create + push the repo
-cd C:\Users\Anthony\Documents\vendoora
-gh repo create vendoora --private --source=. --remote=origin --push
+gh auth login            # OR: rely on Git Credential Manager via GitHub Desktop
+git clone https://github.com/johnsonanthony20245-ui/vendoora.git
+cd vendoora
+volta install node@22.12.0 pnpm@9.15.0   # toolchain
+pnpm install
+cp .env.example .env
+pnpm db:up                                # local Postgres on host port 5434
+pnpm -F @vendoora/db exec prisma migrate deploy
+pnpm db:seed
+pnpm -F @vendoora/web dev
 ```
-
-### Option B: Create the repo in the GitHub UI and push manually
-```bash
-# Create a new private repo named "vendoora" at github.com/new (do NOT add
-# README, .gitignore, or license; we already have them).
-cd C:\Users\Anthony\Documents\vendoora
-git remote add origin git@github.com:<your-username>/vendoora.git
-git push -u origin main
-```
-
-Either way, the workflow at `.github/workflows/ci.yml` fires automatically on
-the first push.
 
 ## Follow-ups
 
