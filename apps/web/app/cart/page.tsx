@@ -1,10 +1,21 @@
 import Link from 'next/link';
-import Image from 'next/image';
 import { cookies } from 'next/headers';
 import { prisma } from '@vendoora/db';
 import { removeCartItem } from '../actions/cart';
-import { ConditionPill, KycTierBadge } from '../../components/TrustPills';
 
+/**
+ * Cart page — mirrors docs/prototype/Vendoora_App.html `Screens.cart()`.
+ * Wrapped in <div class="proto-cart"> so the scoped prototype-cart.css applies.
+ *
+ * Section order matches the prototype verbatim:
+ *   empty state — OR — cart-layout with cart-items (grouped by seller) +
+ *   right-rail cart-summary.
+ *
+ * Delivery fee + free-over-50 logic mirrors the prototype's App.cartTotals():
+ *   - subtotal = Σ price × qty
+ *   - delivery = subtotal >= 50 ? 0 : 2
+ *   - total    = subtotal + delivery
+ */
 export const dynamic = 'force-dynamic';
 
 export default async function CartPage() {
@@ -14,180 +25,244 @@ export default async function CartPage() {
   const cart = sessionId
     ? await prisma.cart.findFirst({
         where: { session_id: sessionId },
-        include: {
-          items: {
-            include: {
-              cart: false,
-            },
-          },
-        },
+        include: { items: true },
       })
     : null;
 
-  // For each cart item, load the associated product + variant + seller for display.
+  // Load product + seller for each cart item; group by seller.
   const itemRows = cart
     ? await Promise.all(
         cart.items.map(async (item) => {
           const product = await prisma.product.findUnique({
             where: { id: item.product_id },
             include: {
-              seller: { select: { business_slug: true, business_name: true, kyc_tier: true } },
-              images: { where: { is_primary: true }, take: 1 },
+              seller: {
+                select: {
+                  id: true,
+                  business_slug: true,
+                  business_name: true,
+                  kyc_tier: true,
+                  business_address: true,
+                },
+              },
+              images: { where: { is_primary: true }, take: 1, select: { url: true } },
             },
           });
-          const variant = item.variant_id
-            ? await prisma.productVariant.findUnique({ where: { id: item.variant_id } })
-            : null;
-          return { item, product, variant };
+          return { item, product };
         }),
       )
     : [];
 
-  // Filter out items whose product or seller disappeared (defensive — shouldn't happen but cheap to handle).
-  const rows = itemRows.filter((r) => r.product !== null);
+  const rows = itemRows.filter(
+    (r): r is typeof itemRows[number] & { product: NonNullable<typeof r.product> } =>
+      r.product !== null,
+  );
 
-  const subtotal = rows.reduce((sum, r) => {
-    const price = Number(r.item.price_at_add);
-    return sum + price * r.item.quantity;
-  }, 0);
+  // Empty state.
+  if (rows.length === 0) {
+    return (
+      <div className="proto-cart">
+        <div className="screen-container">
+          <h1 className="screen-title">Your cart</h1>
+          <div className="cart-empty">
+            <div className="cart-empty-icon">
+              <svg
+                width="32"
+                height="32"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <circle cx="9" cy="21" r="1" />
+                <circle cx="20" cy="21" r="1" />
+                <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" />
+              </svg>
+            </div>
+            <h2 style={{ fontSize: 20, fontWeight: 700, marginBottom: 'var(--space-2)' }}>
+              Your cart is empty
+            </h2>
+            <p style={{ color: 'var(--color-text-muted)', marginBottom: 'var(--space-5)' }}>
+              Find something authentic from a verified Liberian seller.
+            </p>
+            <Link href="/search" className="btn btn-primary">
+              Browse products
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
-  const itemCount = rows.reduce((sum, r) => sum + r.item.quantity, 0);
+  // Group by seller_id
+  const sellerGroups = new Map<
+    string,
+    {
+      seller: typeof rows[number]['product']['seller'];
+      items: { item: typeof rows[number]['item']; product: typeof rows[number]['product'] }[];
+    }
+  >();
+  for (const r of rows) {
+    const sid = r.product.seller.id;
+    const existing = sellerGroups.get(sid);
+    if (existing) {
+      existing.items.push(r);
+    } else {
+      sellerGroups.set(sid, { seller: r.product.seller, items: [r] });
+    }
+  }
+
+  // Totals — match the prototype's App.cartTotals() shape.
+  const subtotal = rows.reduce(
+    (s, r) => s + Number(r.item.price_at_add) * r.item.quantity,
+    0,
+  );
+  const delivery = subtotal >= 50 ? 0 : 2;
+  const total = subtotal + delivery;
+  const itemCount = rows.reduce((s, r) => s + r.item.quantity, 0);
 
   return (
-    <main className="bg-neutral-50 min-h-screen">
-      <section className="border-b border-neutral-200 bg-neutral-0 px-6 py-8">
-        <div className="mx-auto max-w-7xl">
-          <h1 className="text-3xl font-bold text-neutral-900 md:text-4xl">Your cart</h1>
-          <p className="mt-2 text-sm text-neutral-600">
-            {itemCount === 0
-              ? 'Nothing in your cart yet.'
-              : `${itemCount} ${itemCount === 1 ? 'item' : 'items'} · escrow-protected on checkout`}
-          </p>
-        </div>
-      </section>
+    <div className="proto-cart">
+      <div className="screen-container">
+        <h1 className="screen-title">Your cart</h1>
+        <p className="screen-subtitle">
+          {itemCount} {itemCount === 1 ? 'item' : 'items'} from {sellerGroups.size}{' '}
+          {sellerGroups.size === 1 ? 'seller' : 'sellers'}.
+        </p>
 
-      <section className="px-6 py-8">
-        <div className="mx-auto max-w-7xl">
-          {rows.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-0 p-12 text-center">
-              <p className="text-neutral-700">Your cart is empty.</p>
-              <Link
-                href="/"
-                className="mt-4 inline-block rounded-lg bg-blue-700 px-6 py-3 text-sm font-semibold text-neutral-0 hover:bg-blue-800"
-              >
-                Browse categories
-              </Link>
-            </div>
-          ) : (
-            <div className="grid gap-8 lg:grid-cols-[1fr_320px]">
-              {/* Items list */}
-              <ul className="space-y-4">
-                {rows.map(({ item, product, variant }) => {
-                  if (!product) return null;
-                  const price = Number(item.price_at_add);
-                  const lineTotal = price * item.quantity;
-                  const img = product.images[0]?.url;
-                  const pdpHref = `/p/${product.seller.business_slug}/${product.slug}`;
-
-                  return (
-                    <li
-                      key={item.id}
-                      className="flex gap-4 rounded-xl border border-neutral-200 bg-neutral-0 p-4"
+        <div className="cart-layout">
+          <div className="cart-items">
+            {Array.from(sellerGroups.values()).map(({ seller, items }) => {
+              const sellerCity = extractCity(seller.business_address);
+              const sellerQty = items.reduce((s, x) => s + x.item.quantity, 0);
+              return (
+                <div key={seller.id} className="cart-seller-group">
+                  <div className="cart-seller-header">
+                    <div className="cart-seller-name">
+                      <span className="badge badge-info">TIER {seller.kyc_tier}</span>
+                      {seller.business_name} · {sellerCity}
+                    </div>
+                    <span
+                      style={{ color: 'var(--color-text-muted)', fontSize: 12 }}
                     >
-                      <Link href={pdpHref} className="relative h-24 w-24 shrink-0 overflow-hidden rounded-lg bg-neutral-100">
-                        {img ? (
-                          <Image src={img} alt={product.name} fill sizes="96px" className="object-cover" />
-                        ) : (
-                          <div className="flex h-full items-center justify-center text-2xl text-neutral-400">📦</div>
-                        )}
-                      </Link>
-
-                      <div className="flex flex-1 flex-col">
-                        <div className="flex items-start justify-between gap-3">
-                          <Link href={pdpHref} className="line-clamp-2 text-sm font-semibold text-neutral-900 hover:text-blue-700">
-                            {product.name}
-                          </Link>
-                          <div className="text-sm font-bold text-neutral-900 shrink-0">
-                            ${lineTotal.toFixed(2)}
+                      {sellerQty} item(s)
+                    </span>
+                  </div>
+                  {items.map(({ item, product }) => {
+                    const price = Number(item.price_at_add);
+                    const lineTotal = price * item.quantity;
+                    const img = product.images[0]?.url;
+                    return (
+                      <div key={item.id} className="cart-item">
+                        <Link
+                          href={`/p/${product.seller.business_slug}/${product.slug}`}
+                          className="cart-item-img"
+                          style={{
+                            background: img
+                              ? `center / cover no-repeat url(${img})`
+                              : 'radial-gradient(ellipse 80% 60% at 50% 45%, #B6C5EC 0%, #8FA5DD 55%, #5A78C9 100%)',
+                          }}
+                          aria-label={product.name}
+                        />
+                        <div>
+                          <div className="cart-item-name">{product.name}</div>
+                          <div className="cart-item-meta">
+                            {product.condition === 'NEW' ? 'Brand new' : product.condition.replace(/_/g, ' ')}
+                            {' · '}
+                            {product.authenticity_status === 'PROOF_PROVIDED' ||
+                            product.authenticity_status === 'PLATFORM_VERIFIED'
+                              ? '✓ Authentic'
+                              : 'Standard'}
+                          </div>
+                          <div className="cart-item-actions">
+                            <span>Qty: {item.quantity}</span>
+                            <span style={{ margin: '0 var(--space-2)', color: 'var(--color-text-subtle)' }}>
+                              ·
+                            </span>
+                            <form action={removeCartItem} style={{ display: 'inline' }}>
+                              <input type="hidden" name="cartItemId" value={item.id} />
+                              <button
+                                type="submit"
+                                style={{
+                                  background: 'transparent',
+                                  border: 'none',
+                                  padding: 0,
+                                  color: 'var(--color-accent)',
+                                  cursor: 'pointer',
+                                  font: 'inherit',
+                                }}
+                              >
+                                Remove
+                              </button>
+                            </form>
                           </div>
                         </div>
-
-                        <div className="mt-1 flex items-center gap-2 text-xs text-neutral-600">
-                          <span>{product.seller.business_name}</span>
-                          <KycTierBadge tier={product.seller.kyc_tier} />
-                        </div>
-
-                        {variant && (
-                          <div className="mt-1 text-xs text-neutral-600">
-                            Variant: <span className="font-semibold text-neutral-900">{variant.name}</span>
-                          </div>
-                        )}
-
-                        <div className="mt-2 flex items-center gap-2 text-xs">
-                          <ConditionPill condition={product.condition} />
-                          <span className="text-neutral-500">
-                            Qty {item.quantity} · ${price.toFixed(2)} each
-                          </span>
-                        </div>
-
-                        <div className="mt-3">
-                          <form action={removeCartItem}>
-                            <input type="hidden" name="cartItemId" value={item.id} />
-                            <button
-                              type="submit"
-                              className="text-xs font-semibold text-red-600 hover:text-red-700"
-                            >
-                              Remove
-                            </button>
-                          </form>
-                        </div>
+                        <div className="cart-item-price">${lineTotal.toFixed(2)}</div>
                       </div>
-                    </li>
-                  );
-                })}
-              </ul>
-
-              {/* Right rail: summary */}
-              <aside className="h-fit rounded-xl border border-neutral-200 bg-neutral-0 p-6">
-                <h2 className="text-sm font-bold uppercase tracking-wider text-neutral-600">
-                  Order summary
-                </h2>
-
-                <div className="mt-4 space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-neutral-600">Subtotal ({itemCount} items)</span>
-                    <span className="font-semibold text-neutral-900">${subtotal.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between text-neutral-500">
-                    <span>Shipping</span>
-                    <span>Calculated at checkout</span>
-                  </div>
-                  <div className="flex justify-between text-neutral-500">
-                    <span>Escrow protection</span>
-                    <span className="font-semibold text-emerald-700">Included</span>
-                  </div>
+                    );
+                  })}
                 </div>
+              );
+            })}
+          </div>
 
-                <div className="mt-4 border-t border-neutral-200 pt-4 flex justify-between text-base">
-                  <span className="font-bold text-neutral-900">Total</span>
-                  <span className="font-bold text-neutral-900">${subtotal.toFixed(2)}</span>
-                </div>
-
-                <Link
-                  href="/checkout"
-                  className="mt-6 block w-full rounded-lg bg-blue-700 px-6 py-3 text-center text-sm font-semibold text-neutral-0 transition hover:bg-blue-800"
-                >
-                  Checkout
-                </Link>
-
-                <p className="mt-3 text-xs text-neutral-500">
-                  Your payment will sit in escrow. Sellers are paid only after you confirm delivery with the 6-digit code.
-                </p>
-              </aside>
+          <aside className="cart-summary">
+            <div className="cart-summary-title">Order summary</div>
+            <div className="cart-summary-row">
+              <span>Subtotal</span>
+              <span className="value">${subtotal.toFixed(2)}</span>
             </div>
-          )}
+            <div className="cart-summary-row">
+              <span>Delivery</span>
+              <span className="value">{delivery === 0 ? 'Free' : `$${delivery.toFixed(2)}`}</span>
+            </div>
+            {delivery === 0 && (
+              <div
+                style={{
+                  fontSize: 11,
+                  color: 'var(--color-verified)',
+                  padding: '0 0 var(--space-2)',
+                }}
+              >
+                ✓ Free delivery on orders over $50
+              </div>
+            )}
+            <div className="cart-summary-row total">
+              <span>Total</span>
+              <span className="value">${total.toFixed(2)}</span>
+            </div>
+            <Link
+              href="/checkout"
+              className="btn btn-primary btn-block btn-lg"
+              style={{ marginTop: 'var(--space-4)' }}
+            >
+              Checkout (escrow protected)
+            </Link>
+            <div
+              style={{
+                fontSize: 11,
+                color: 'var(--color-text-muted)',
+                textAlign: 'center',
+                marginTop: 'var(--space-3)',
+                lineHeight: 1.5,
+              }}
+            >
+              🔒 Your payment is held safely by Vendoora until you confirm delivery
+              with your 6-digit code.
+            </div>
+          </aside>
         </div>
-      </section>
-    </main>
+      </div>
+    </div>
   );
+}
+
+function extractCity(address: unknown): string {
+  if (address && typeof address === 'object' && 'city' in address) {
+    const v = (address as { city?: unknown }).city;
+    if (typeof v === 'string' && v.length > 0) return v;
+  }
+  return 'Monrovia';
 }
