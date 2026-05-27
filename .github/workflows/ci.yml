@@ -1,0 +1,292 @@
+name: CI
+
+# Vendoora 10-stage CI pipeline.
+#
+# Every PR + every push to main runs install → typecheck → lint → prisma
+# format check → prisma validate → vitest → next build → secret-scan in a
+# fan-out matrix where independent stages run concurrently. The summary
+# job blocks the merge when any stage fails.
+#
+# Spec source: docs/Build_Prompt.md §1.5 + docs/Engineering_Spec.md §13.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Cancel superseded runs on the same ref — saves CI minutes when a PR is
+# rapidly updated.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PNPM_VERSION: '9.15.0'
+  NODE_VERSION: '22.12.0'
+
+jobs:
+  # ──────────────────────────────────────────────────────────────────────
+  # 01 — install (warms the pnpm store + Turbo cache for every later job)
+  # ──────────────────────────────────────────────────────────────────────
+  install:
+    name: 01 · Install
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+  # ──────────────────────────────────────────────────────────────────────
+  # 02 — type-check
+  # ──────────────────────────────────────────────────────────────────────
+  type-check:
+    name: 02 · Type-check
+    runs-on: ubuntu-latest
+    needs: install
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec prisma generate --schema packages/db/prisma/schema.prisma
+      - run: pnpm -r type-check
+
+  # ──────────────────────────────────────────────────────────────────────
+  # 03 — lint
+  # ──────────────────────────────────────────────────────────────────────
+  lint:
+    name: 03 · Lint
+    runs-on: ubuntu-latest
+    needs: install
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm -r lint
+
+  # ──────────────────────────────────────────────────────────────────────
+  # 04 — prisma format check (no schema drift from prisma format)
+  # ──────────────────────────────────────────────────────────────────────
+  prisma-format:
+    name: 04 · Prisma format
+    runs-on: ubuntu-latest
+    needs: install
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Verify schema.prisma is canonical
+        run: |
+          pnpm exec prisma format --schema packages/db/prisma/schema.prisma
+          git diff --exit-code packages/db/prisma/schema.prisma
+
+  # ──────────────────────────────────────────────────────────────────────
+  # 05 — prisma validate
+  # ──────────────────────────────────────────────────────────────────────
+  prisma-validate:
+    name: 05 · Prisma validate
+    runs-on: ubuntu-latest
+    needs: install
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - env:
+          DATABASE_URL: postgresql://stub:stub@localhost:5432/stub?schema=public
+        run: pnpm exec prisma validate --schema packages/db/prisma/schema.prisma
+
+  # ──────────────────────────────────────────────────────────────────────
+  # 06 — prisma migrate (deploy against a fresh Postgres + run seed)
+  # ──────────────────────────────────────────────────────────────────────
+  prisma-migrate:
+    name: 06 · Prisma migrate
+    runs-on: ubuntu-latest
+    needs: install
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: vendoora
+          POSTGRES_PASSWORD: vendoora_ci_password
+          POSTGRES_DB: vendoora_ci
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://vendoora:vendoora_ci_password@localhost:5432/vendoora_ci?schema=public
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Apply all migrations
+        working-directory: packages/db
+        run: pnpm exec prisma migrate deploy
+      - name: Run seed
+        working-directory: packages/db
+        run: pnpm exec prisma db seed
+
+  # ──────────────────────────────────────────────────────────────────────
+  # 07 — vitest (depends on a running Postgres seeded by 06)
+  # ──────────────────────────────────────────────────────────────────────
+  test:
+    name: 07 · Vitest
+    runs-on: ubuntu-latest
+    needs: install
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: vendoora
+          POSTGRES_PASSWORD: vendoora_ci_password
+          POSTGRES_DB: vendoora_ci
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://vendoora:vendoora_ci_password@localhost:5432/vendoora_ci?schema=public
+      DATABASE_URL_TEST: postgresql://vendoora:vendoora_ci_password@localhost:5432/vendoora_ci?schema=public
+      PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION: 'yes, run prisma migrate reset against the local test database'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - working-directory: packages/db
+        run: pnpm exec prisma migrate deploy
+      - working-directory: packages/db
+        run: pnpm exec prisma db seed
+      - run: pnpm -r test
+
+  # ──────────────────────────────────────────────────────────────────────
+  # 08 — next build
+  # ──────────────────────────────────────────────────────────────────────
+  build:
+    name: 08 · Build
+    runs-on: ubuntu-latest
+    needs: [type-check, lint]
+    env:
+      # Build only needs a syntactically valid URL; routes are dynamic so
+      # no live Postgres call happens during static prerender.
+      DATABASE_URL: postgresql://stub:stub@localhost:5432/stub?schema=public
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec prisma generate --schema packages/db/prisma/schema.prisma
+      - run: pnpm -F @vendoora/web build
+
+  # ──────────────────────────────────────────────────────────────────────
+  # 09 — secret scan (catch accidentally-committed keys)
+  # ──────────────────────────────────────────────────────────────────────
+  secret-scan:
+    name: 09 · Secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: ${{ github.event.pull_request.base.sha || 'HEAD~1' }}
+          head: ${{ github.event.pull_request.head.sha || 'HEAD' }}
+          extra_args: --only-verified
+
+  # ──────────────────────────────────────────────────────────────────────
+  # 10 — summary (fails when any stage failed; the merge gate)
+  # ──────────────────────────────────────────────────────────────────────
+  summary:
+    name: 10 · CI summary
+    runs-on: ubuntu-latest
+    if: always()
+    needs:
+      - install
+      - type-check
+      - lint
+      - prisma-format
+      - prisma-validate
+      - prisma-migrate
+      - test
+      - build
+      - secret-scan
+    steps:
+      - name: Block on any stage failure
+        run: |
+          echo "install:          ${{ needs.install.result }}"
+          echo "type-check:       ${{ needs.type-check.result }}"
+          echo "lint:             ${{ needs.lint.result }}"
+          echo "prisma-format:    ${{ needs.prisma-format.result }}"
+          echo "prisma-validate:  ${{ needs.prisma-validate.result }}"
+          echo "prisma-migrate:   ${{ needs.prisma-migrate.result }}"
+          echo "test:             ${{ needs.test.result }}"
+          echo "build:            ${{ needs.build.result }}"
+          echo "secret-scan:      ${{ needs.secret-scan.result }}"
+          for r in \
+            "${{ needs.install.result }}" \
+            "${{ needs.type-check.result }}" \
+            "${{ needs.lint.result }}" \
+            "${{ needs.prisma-format.result }}" \
+            "${{ needs.prisma-validate.result }}" \
+            "${{ needs.prisma-migrate.result }}" \
+            "${{ needs.test.result }}" \
+            "${{ needs.build.result }}" \
+            "${{ needs.secret-scan.result }}"; do
+            if [ "$r" != "success" ]; then
+              echo "::error::At least one stage failed."
+              exit 1
+            fi
+          done
+          echo "All 9 stages green."
