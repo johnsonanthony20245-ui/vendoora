@@ -164,7 +164,7 @@ export default function PricingPage() {
 
                 <div className="mt-6">
                   <Link
-                    href="/#categories"
+                    href="/sell"
                     className={`block w-full rounded-lg px-4 py-2.5 text-center text-sm font-semibold transition ${
                       p.highlight
                         ? 'bg-blue-700 text-neutral-0 hover:bg-blue-800'
@@ -179,9 +179,12 @@ export default function PricingPage() {
           </div>
 
           <p className="mt-6 max-w-3xl text-xs text-neutral-500">
-            Seller onboarding lands in a future slice. Today the &quot;Choose plan&quot;
-            buttons link back home — the seller console + KYC flow + plan selection are
-            tracked under Playbook §6 (Phase 4 Seller Infrastructure).
+            Picking a plan starts the 3-step onboarding wizard at{' '}
+            <Link href="/sell" className="font-semibold text-blue-700 hover:underline">
+              /sell
+            </Link>
+            : business + contact, pickup zone, plan + commit. KYC Tier 2+
+            graduation flows live in the seller console (Phase 4).
           </p>
         </div>
       </section>
