@@ -149,6 +149,48 @@ export async function removeCartItem(formData: FormData): Promise<void> {
 }
 
 /**
+ * Change a cart item's quantity by +/- 1 (or any signed delta passed in the
+ * form). Decrementing below 1 deletes the row instead — same UX shape as the
+ * prototype's "− 1 +" buttons.
+ *
+ * Ownership check matches removeCartItem: the item's cart must belong to the
+ * caller's vdr_cart session, else this is a no-op.
+ *
+ * Caps at quantity 99 to avoid runaway numbers.
+ */
+export async function updateCartItemQuantity(formData: FormData): Promise<void> {
+  const cartItemId = formData.get('cartItemId');
+  if (typeof cartItemId !== 'string' || !cartItemId) return;
+
+  const deltaRaw = formData.get('delta');
+  const delta = typeof deltaRaw === 'string' ? Number(deltaRaw) : NaN;
+  if (!Number.isFinite(delta) || delta === 0) return;
+
+  const sessionId = await getSessionIdReadOnly();
+  if (!sessionId) return;
+
+  const item = await prisma.cartItem.findUnique({
+    where: { id: cartItemId },
+    include: { cart: { select: { session_id: true } } },
+  });
+  if (!item || item.cart.session_id !== sessionId) return;
+
+  const nextQty = item.quantity + Math.trunc(delta);
+
+  if (nextQty <= 0) {
+    await prisma.cartItem.delete({ where: { id: item.id } });
+  } else {
+    await prisma.cartItem.update({
+      where: { id: item.id },
+      data: { quantity: Math.min(99, nextQty) },
+    });
+  }
+
+  revalidatePath('/cart');
+  revalidatePath('/', 'layout');
+}
+
+/**
  * Sum the cart's item quantities for the header badge.
  * Returns 0 when there's no cookie or no cart yet.
  */

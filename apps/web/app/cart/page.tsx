@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { cookies } from 'next/headers';
 import { prisma } from '@vendoora/db';
-import { removeCartItem } from '../actions/cart';
+import { removeCartItem, updateCartItemQuantity } from '../actions/cart';
 
 /**
  * Cart page — mirrors docs/prototype/Vendoora_App.html `Screens.cart()`.
@@ -177,7 +177,34 @@ export default async function CartPage() {
                               : 'Standard'}
                           </div>
                           <div className="cart-item-actions">
-                            <span>Qty: {item.quantity}</span>
+                            <span>Qty:</span>
+                            <form action={updateCartItemQuantity} style={{ display: 'inline' }}>
+                              <input type="hidden" name="cartItemId" value={item.id} />
+                              <input type="hidden" name="delta" value="-1" />
+                              <button
+                                type="submit"
+                                aria-label="Decrease quantity"
+                                className="btn btn-ghost btn-sm"
+                                style={{ padding: '2px 8px' }}
+                              >
+                                −
+                              </button>
+                            </form>
+                            <span style={{ fontWeight: 600, color: 'var(--color-text)' }}>
+                              {item.quantity}
+                            </span>
+                            <form action={updateCartItemQuantity} style={{ display: 'inline' }}>
+                              <input type="hidden" name="cartItemId" value={item.id} />
+                              <input type="hidden" name="delta" value="1" />
+                              <button
+                                type="submit"
+                                aria-label="Increase quantity"
+                                className="btn btn-ghost btn-sm"
+                                style={{ padding: '2px 8px' }}
+                              >
+                                +
+                              </button>
+                            </form>
                             <span style={{ margin: '0 var(--space-2)', color: 'var(--color-text-subtle)' }}>
                               ·
                             </span>

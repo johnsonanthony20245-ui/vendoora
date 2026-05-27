@@ -29,7 +29,7 @@ vi.mock('next/cache', () => ({
 }));
 
 const { prisma } = await import('@vendoora/db');
-const { addToCart, removeCartItem, getCartCount } = await import('../app/actions/cart');
+const { addToCart, removeCartItem, getCartCount, updateCartItemQuantity } = await import('../app/actions/cart');
 
 let testProductId = '';
 let testProductIdAlt = '';
@@ -168,5 +168,92 @@ describe('cart server actions', () => {
 
     const stillThere = await prisma.cartItem.findUnique({ where: { id: item.id } });
     expect(stillThere).not.toBeNull();
+  });
+
+  it('updateCartItemQuantity +1 increments the quantity', async () => {
+    const fd = new FormData();
+    fd.set('productId', testProductId);
+    fd.set('quantity', '2');
+    await addToCart(fd);
+
+    const cart = await prisma.cart.findFirst({ where: { session_id: FIXED_SESSION } });
+    if (!cart) throw new Error('Cart not found after addToCart');
+    const item = await prisma.cartItem.findFirst({ where: { cart_id: cart.id } });
+    if (!item) throw new Error('CartItem not found');
+
+    const incFd = new FormData();
+    incFd.set('cartItemId', item.id);
+    incFd.set('delta', '1');
+    await updateCartItemQuantity(incFd);
+
+    const after = await prisma.cartItem.findUnique({ where: { id: item.id } });
+    expect(after?.quantity).toBe(3);
+  });
+
+  it('updateCartItemQuantity -1 decrements; reaching 0 deletes the row', async () => {
+    const fd = new FormData();
+    fd.set('productId', testProductId);
+    fd.set('quantity', '2');
+    await addToCart(fd);
+
+    const cart = await prisma.cart.findFirst({ where: { session_id: FIXED_SESSION } });
+    if (!cart) throw new Error('Cart not found');
+    const item = await prisma.cartItem.findFirst({ where: { cart_id: cart.id } });
+    if (!item) throw new Error('CartItem not found');
+
+    // 2 -> 1
+    const dec1 = new FormData();
+    dec1.set('cartItemId', item.id);
+    dec1.set('delta', '-1');
+    await updateCartItemQuantity(dec1);
+    expect((await prisma.cartItem.findUnique({ where: { id: item.id } }))?.quantity).toBe(1);
+
+    // 1 -> 0 -> deleted
+    const dec2 = new FormData();
+    dec2.set('cartItemId', item.id);
+    dec2.set('delta', '-1');
+    await updateCartItemQuantity(dec2);
+    expect(await prisma.cartItem.findUnique({ where: { id: item.id } })).toBeNull();
+  });
+
+  it('updateCartItemQuantity caps at 99', async () => {
+    const fd = new FormData();
+    fd.set('productId', testProductId);
+    fd.set('quantity', '90');
+    await addToCart(fd);
+
+    const cart = await prisma.cart.findFirst({ where: { session_id: FIXED_SESSION } });
+    if (!cart) throw new Error('Cart not found');
+    const item = await prisma.cartItem.findFirst({ where: { cart_id: cart.id } });
+    if (!item) throw new Error('CartItem not found');
+
+    const incFd = new FormData();
+    incFd.set('cartItemId', item.id);
+    incFd.set('delta', '50');
+    await updateCartItemQuantity(incFd);
+
+    const after = await prisma.cartItem.findUnique({ where: { id: item.id } });
+    expect(after?.quantity).toBe(99);
+  });
+
+  it('updateCartItemQuantity ignores requests from a different session', async () => {
+    const fd = new FormData();
+    fd.set('productId', testProductId);
+    fd.set('quantity', '2');
+    await addToCart(fd);
+
+    const cart = await prisma.cart.findFirst({ where: { session_id: FIXED_SESSION } });
+    if (!cart) throw new Error('Cart not found');
+    const item = await prisma.cartItem.findFirst({ where: { cart_id: cart.id } });
+    if (!item) throw new Error('CartItem not found');
+
+    cookieStore.set('vdr_cart', 'attacker_session');
+    const incFd = new FormData();
+    incFd.set('cartItemId', item.id);
+    incFd.set('delta', '1');
+    await updateCartItemQuantity(incFd);
+
+    const after = await prisma.cartItem.findUnique({ where: { id: item.id } });
+    expect(after?.quantity).toBe(2); // unchanged
   });
 });
