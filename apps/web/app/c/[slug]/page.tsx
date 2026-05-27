@@ -1,64 +1,95 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { prisma } from '@vendoora/db';
+import {
+  searchProducts,
+  getFacetCounts,
+  type SortOption,
+} from '../../../lib/search';
+import {
+  ProtoFilterSidebar,
+  parseFilterParams,
+} from '../../../components/ProtoFilterSidebar';
+import { ProtoSortDropdown } from '../../../components/ProtoSortDropdown';
 import { ProtoProductCard } from '../../../components/ProtoProductCard';
 
 /**
- * Category browse page — mirrors docs/prototype/Vendoora_App.html
- * `Screens.browse(category)`. Wrapped in <div class="proto-browse"> so
- * the scoped prototype-browse.css applies.
+ * Category browse page — mirrors prototype `Screens.browse()`.
  *
- * Section order matches the prototype:
- *   breadcrumb → browse-layout (.filter-sidebar + .browse-toolbar +
- *   .product-grid)
- *
- * The filter sidebar checkboxes are decorative-only in this slice
- * (the prototype's are too — the checked-state is hard-coded). The
- * sort dropdown is rendered but does not yet drive the orderBy.
- * Those wire to real Prisma where-clauses in a later slice.
+ * Sidebar checkboxes drive real URL-encoded multi-select filters
+ * (cond=NEW,LIKE_NEW · tier=3,2 · auth=PROOF_PROVIDED · rating=4).
+ * Counts come from getFacetCounts(); sort dropdown drives orderBy.
  */
 export const dynamic = 'force-dynamic';
 
+const VALID_SORTS = new Set<SortOption>([
+  'best',
+  'price-asc',
+  'price-desc',
+  'new',
+  'rating',
+]);
+
 interface PageProps {
   params: Promise<{ slug: string }>;
+  searchParams: Promise<{
+    cond?: string;
+    tier?: string;
+    auth?: string;
+    rating?: string;
+    sort?: string;
+    page?: string;
+  }>;
 }
 
-export default async function CategoryPage({ params }: PageProps) {
+export default async function CategoryPage({ params, searchParams }: PageProps) {
   const { slug } = await params;
+  const sp = await searchParams;
 
   const category = await prisma.category.findUnique({ where: { slug } });
   if (!category) notFound();
 
-  const products = await prisma.product.findMany({
-    where: {
-      category_id: category.id,
-      status: 'PUBLISHED',
-      moderation_status: 'APPROVED',
-      deleted_at: null,
-    },
-    orderBy: { created_at: 'desc' },
-    include: {
-      seller: {
-        select: { business_slug: true, business_name: true, kyc_tier: true },
-      },
-      images: { where: { is_primary: true }, take: 1, select: { url: true } },
-    },
-  });
+  const filterState = parseFilterParams(sp);
+  const sort: SortOption = VALID_SORTS.has(sp.sort as SortOption)
+    ? (sp.sort as SortOption)
+    : 'best';
+  const pageNum = Number(sp.page);
+  const page = Number.isFinite(pageNum) && pageNum >= 1 ? Math.floor(pageNum) : 1;
 
-  const cards = products.map((p) => ({
+  const searchFilters = {
+    categorySlug: slug,
+    conditions: filterState.conditions.length > 0 ? filterState.conditions : undefined,
+    sellerTiers: filterState.sellerTiers.length > 0 ? filterState.sellerTiers : undefined,
+    authenticities:
+      filterState.authenticities.length > 0 ? filterState.authenticities : undefined,
+    minRating: filterState.minRating > 0 ? filterState.minRating : undefined,
+    sort,
+    page,
+    perPage: 24,
+  };
+
+  const [result, facetCounts] = await Promise.all([
+    searchProducts(searchFilters),
+    getFacetCounts(searchFilters),
+  ]);
+
+  const cards = result.products.map((p) => ({
     id: p.id,
     slug: p.slug,
     name: p.name,
-    base_price: p.base_price.toString(),
-    compare_at_price: p.compare_at_price ? p.compare_at_price.toString() : null,
+    base_price: p.base_price,
+    compare_at_price: p.compare_at_price,
     rating_average: p.rating_average,
     rating_count: p.rating_count,
-    primary_image_url: p.images[0]?.url ?? null,
+    primary_image_url: p.primary_image_url,
     is_featured: p.is_featured,
     authenticity_status: p.authenticity_status,
     condition: p.condition,
     seller: p.seller,
   }));
+
+  const basePath = `/c/${slug}`;
+  const preservedParams: Record<string, string | undefined> = sort !== 'best' ? { sort } : {};
 
   return (
     <div className="proto-browse">
@@ -70,74 +101,12 @@ export default async function CategoryPage({ params }: PageProps) {
         </div>
 
         <div className="browse-layout">
-          <aside className="filter-sidebar">
-            <div className="filter-group">
-              <div className="filter-group-label">Condition</div>
-              <label className="filter-option">
-                <input type="checkbox" defaultChecked /> Brand new{' '}
-                <span className="filter-option-count">412</span>
-              </label>
-              <label className="filter-option">
-                <input type="checkbox" defaultChecked /> Like new{' '}
-                <span className="filter-option-count">87</span>
-              </label>
-              <label className="filter-option">
-                <input type="checkbox" /> Used – Good{' '}
-                <span className="filter-option-count">124</span>
-              </label>
-              <label className="filter-option">
-                <input type="checkbox" /> Used – Fair{' '}
-                <span className="filter-option-count">38</span>
-              </label>
-              <label className="filter-option">
-                <input type="checkbox" /> Refurbished{' '}
-                <span className="filter-option-count">29</span>
-              </label>
-            </div>
-            <div className="filter-group">
-              <div className="filter-group-label">Authenticity</div>
-              <label className="filter-option">
-                <input type="checkbox" /> Platform verified{' '}
-                <span className="filter-option-count">42</span>
-              </label>
-              <label className="filter-option">
-                <input type="checkbox" /> Proof uploaded{' '}
-                <span className="filter-option-count">186</span>
-              </label>
-              <label className="filter-option">
-                <input type="checkbox" /> Claimed authentic{' '}
-                <span className="filter-option-count">312</span>
-              </label>
-            </div>
-            <div className="filter-group">
-              <div className="filter-group-label">Seller tier</div>
-              <label className="filter-option">
-                <input type="checkbox" /> Tier 4 (Trusted){' '}
-                <span className="filter-option-count">28</span>
-              </label>
-              <label className="filter-option">
-                <input type="checkbox" defaultChecked /> Tier 3 (Verified){' '}
-                <span className="filter-option-count">147</span>
-              </label>
-              <label className="filter-option">
-                <input type="checkbox" defaultChecked /> Tier 2 (Standard){' '}
-                <span className="filter-option-count">386</span>
-              </label>
-              <label className="filter-option">
-                <input type="checkbox" /> Tier 1 (New){' '}
-                <span className="filter-option-count">142</span>
-              </label>
-            </div>
-            <div className="filter-group">
-              <div className="filter-group-label">Rating</div>
-              <label className="filter-option">
-                <input type="checkbox" /> 4★ &amp; up
-              </label>
-              <label className="filter-option">
-                <input type="checkbox" /> 3★ &amp; up
-              </label>
-            </div>
-          </aside>
+          <ProtoFilterSidebar
+            basePath={basePath}
+            preservedParams={preservedParams}
+            state={filterState}
+            counts={facetCounts}
+          />
 
           <div>
             <div className="browse-toolbar">
@@ -146,22 +115,17 @@ export default async function CategoryPage({ params }: PageProps) {
                   {category.name}
                 </h1>
                 <div className="browse-results-count">
-                  {cards.length} {cards.length === 1 ? 'product' : 'products'} ·
-                  Verified sellers only
+                  {result.totalCount}{' '}
+                  {result.totalCount === 1 ? 'product' : 'products'} · Verified
+                  sellers only
                 </div>
               </div>
-              <select className="input sort-select">
-                <option>Sort: Best match</option>
-                <option>Price: low to high</option>
-                <option>Price: high to low</option>
-                <option>Newest first</option>
-                <option>Top rated</option>
-              </select>
+              <ProtoSortDropdown basePath={basePath} current={sort} />
             </div>
 
             {cards.length === 0 ? (
               <div className="empty-state">
-                <p>No products in {category.name} yet. Check back soon.</p>
+                <p>No products match the current filters.</p>
               </div>
             ) : (
               <div className="product-grid">

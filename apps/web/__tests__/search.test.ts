@@ -76,11 +76,50 @@ describe('searchProducts', () => {
     }
   });
 
-  it('filters by condition', async () => {
+  it('filters by condition (single)', async () => {
     // "Bamboo Basket — Large" is the only LIKE_NEW in the seed; everything else is NEW.
-    const result = await searchProducts({ condition: 'LIKE_NEW' });
+    const result = await searchProducts({ conditions: ['LIKE_NEW'] });
     expect(result.products).toHaveLength(1);
     expect(result.products[0]?.name).toMatch(/Bamboo Basket/);
+  });
+
+  it('filters by condition (multi-select OR)', async () => {
+    // Both NEW and LIKE_NEW conditions; should include the LIKE_NEW basket
+    // plus the 17 NEW seeded products.
+    const result = await searchProducts({ conditions: ['NEW', 'LIKE_NEW'] });
+    expect(result.totalCount).toBeGreaterThanOrEqual(17);
+  });
+
+  it('filters by seller tier', async () => {
+    // Seeded sellers: Konah T3, Sundayma T4, Mariama T3. T4 should match
+    // only Sundayma's products.
+    const t4 = await searchProducts({ sellerTiers: [4] });
+    expect(t4.totalCount).toBeGreaterThan(0);
+    for (const p of t4.products) {
+      const seller = await prisma.seller.findUnique({
+        where: { business_slug: p.seller.business_slug },
+        select: { kyc_tier: true },
+      });
+      expect(seller?.kyc_tier).toBe(4);
+    }
+  });
+
+  it('sort=price-asc orders cheapest first; price-desc reverses', async () => {
+    const asc = await searchProducts({ sort: 'price-asc', perPage: 10 });
+    const desc = await searchProducts({ sort: 'price-desc', perPage: 10 });
+
+    for (let i = 1; i < asc.products.length; i++) {
+      const a = asc.products[i - 1];
+      const b = asc.products[i];
+      if (!a || !b) continue;
+      expect(Number(b.base_price)).toBeGreaterThanOrEqual(Number(a.base_price));
+    }
+    for (let i = 1; i < desc.products.length; i++) {
+      const a = desc.products[i - 1];
+      const b = desc.products[i];
+      if (!a || !b) continue;
+      expect(Number(b.base_price)).toBeLessThanOrEqual(Number(a.base_price));
+    }
   });
 
   it('paginates: page 1 and page 2 return disjoint product sets', async () => {
