@@ -34,16 +34,22 @@ Then the specification set (the *what* and *how*):
   data: browse, search (tsvector), PDP + real reviews, cart, checkout, order placement,
   order tracking, disputes (open + T&S admin resolution), seller onboarding wizard, admin
   dispute queue, search-insights. Escrow *records* + dispute/admin escrow transitions are real.
-- **Trust mechanic (P3) hard parts are NOT yet real** and are credential-blocked:
+- **Trust mechanic (P3):**
+  - **6-digit code → escrow release — REAL.** `confirmDeliveryByCode` (lockout, expiry,
+    `FOR UPDATE` concurrency lock) → order DELIVERED + 24h release clock; the auto-release
+    worker (`apps/worker`, polling loop) sweeps eligible holds `HELD → RELEASING` via
+    `@vendoora/domain`. **Still flagged §5:** SMS code delivery (Africa's Talking),
+    driver-identity RBAC (P7 driver auth; the code-entry UI is dev-gated meanwhile), and
+    `RELEASING → RELEASED` (real payout webhook — payments, below).
   - **Payments** — SCAFFOLD-ONLY. `placeOrder` auto-captures with `provider:'WALLET'`; no
     Stripe / MTN MoMo / Orange Money adapters or webhooks. Needs sandbox keys (§Credentials).
-  - **6-digit code** — generation + bcrypt verify are real; **SMS delivery and the
-    driver-entry → verify → escrow-release path are absent.** Needs an SMS provider + `apps/worker`.
-  - **Escrow auto-release** — `scheduled_release_at` is set but no worker processes it.
-  - **KYC** — T1 application submit is real; document upload, T2+ review queue, and
-    capability tier-gating are absent.
-- **Structure:** packages present = `config, db, design-tokens, types`; missing per
-  Engineering_Spec §2.1 = `ui, schemas, api-client, domain, i18n`; `apps/worker` is missing.
+  - **KYC** — T1 application submit is real; document upload (needs R2), T2+ review queue,
+    and capability tier-gating are absent.
+- **Worker scheduler:** `apps/worker` runs a real single-process polling loop. Production
+  target is BullMQ repeatable jobs on Upstash Redis (Engineering_Spec §6.4) — flagged §5,
+  gated on `UPSTASH_REDIS_*`; the job logic is unchanged when it swaps.
+- **Structure:** packages present = `config, db, design-tokens, domain, types`; missing per
+  Engineering_Spec §2.1 = `ui, schemas, api-client, i18n`. Apps = `web`, `worker`.
 
 Treat the four hard parts as **§5 stop-and-flag** items until their sandbox credentials are
 loaded into the environment. Building real adapter code against sandbox is *functional and

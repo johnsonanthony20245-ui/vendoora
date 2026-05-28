@@ -1,0 +1,29 @@
+{
+  "name": "@vendoora/domain",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "type-check": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "echo \"domain logic is exercised via apps/web integration tests against the test DB\" && exit 0",
+    "build": "echo \"no build step (library is just source)\" && exit 0"
+  },
+  "dependencies": {
+    "@vendoora/db": "workspace:*"
+  },
+  "devDependencies": {
+    "@vendoora/config": "workspace:*",
+    "@types/node": "^22.9.0",
+    "eslint": "^9.15.0",
+    "typescript": "^5.6.3"
+  }
+}
