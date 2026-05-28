@@ -25,7 +25,8 @@ process.env.DATABASE_URL = process.env.DATABASE_URL_TEST;
 
 const { prisma } = await import('@vendoora/db');
 const { generateDeliveryCode } = await import('../lib/delivery-code');
-const { confirmDeliveryByCode, releaseEligibleEscrowForOrder } = await import('../lib/escrow');
+const { confirmDeliveryByCode, releaseEligibleEscrowForOrder, releaseAllEligibleEscrow } =
+  await import('../lib/escrow');
 
 const BUYER_EMAIL = 'trust_test_buyer@vendoora.test';
 const HOUR = 3600 * 1000;
@@ -324,5 +325,45 @@ describe('concurrency safety', () => {
       where: { escrow_hold_id: holdId, to_state: 'RELEASING' },
     });
     expect(transitions).toBe(1);
+  });
+});
+
+describe('releaseAllEligibleEscrow (worker sweep)', () => {
+  it('releases eligible holds across orders and skips not-yet-due ones', async () => {
+    const base = new Date();
+
+    // Two eligible orders: delivered at `base`, so window = base + 24h.
+    const eligible: { holdId: string }[] = [];
+    for (let i = 0; i < 2; i++) {
+      const { plaintext, hash } = await generateDeliveryCode();
+      const o = await makeOrder({ codeHash: hash });
+      await confirmDeliveryByCode(prisma, { orderId: o.orderId, code: plaintext, now: base });
+      eligible.push({ holdId: o.holdId });
+    }
+
+    // One not-yet-due order: delivered at base + 24h, so window = base + 48h.
+    const { plaintext: p3, hash: h3 } = await generateDeliveryCode();
+    const notDue = await makeOrder({ codeHash: h3 });
+    await confirmDeliveryByCode(prisma, {
+      orderId: notDue.orderId,
+      code: p3,
+      now: new Date(base.getTime() + 24 * HOUR),
+    });
+
+    // Sweep at base + 25h: the two eligible holds are past their window; the
+    // not-due hold (window base + 48h) is not.
+    const result = await releaseAllEligibleEscrow(prisma, {
+      now: new Date(base.getTime() + 25 * HOUR),
+    });
+
+    expect(result.holdsReleased).toBeGreaterThanOrEqual(2);
+    expect(result.ordersProcessed).toBeGreaterThanOrEqual(2);
+
+    for (const e of eligible) {
+      const hold = await prisma.escrowHold.findUnique({ where: { id: e.holdId } });
+      expect(hold?.state).toBe('RELEASING');
+    }
+    const notDueHold = await prisma.escrowHold.findUnique({ where: { id: notDue.holdId } });
+    expect(notDueHold?.state).toBe('HELD');
   });
 });

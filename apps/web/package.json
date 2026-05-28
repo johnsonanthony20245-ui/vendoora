@@ -15,6 +15,7 @@
     "@clerk/nextjs": "^7.4.1",
     "@vendoora/db": "workspace:*",
     "@vendoora/design-tokens": "workspace:*",
+    "@vendoora/domain": "workspace:*",
     "@vendoora/types": "workspace:*",
     "next": "^15.0.3",
     "react": "^19.0.0",
