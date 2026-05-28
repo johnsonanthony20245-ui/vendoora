@@ -5,15 +5,35 @@ import { prisma } from '@vendoora/db';
 import { stageFor, nextHappyStatus } from '../../../lib/order-stage';
 import { OrderStageStrip } from '../../../components/OrderStageStrip';
 import { advanceOrderStatus } from '../../actions/order-status';
+import { verifyDeliveryCodeAtDoor } from '../../actions/delivery';
 
 export const dynamic = 'force-dynamic';
 
 interface PageProps {
   params: Promise<{ orderNumber: string }>;
+  searchParams: Promise<{ codeError?: string; left?: string; codeOk?: string }>;
 }
 
-export default async function OrderTrackingPage({ params }: PageProps) {
+function codeErrorMessage(reason: string, left?: string): string {
+  switch (reason) {
+    case 'wrong_code': {
+      const n = Number(left ?? 0);
+      return `That code is incorrect. ${n} attempt${n === 1 ? '' : 's'} remaining.`;
+    }
+    case 'locked':
+      return 'Too many incorrect attempts — this order is locked. Contact support to continue.';
+    case 'expired':
+      return 'This delivery code has expired. The buyer needs a fresh code.';
+    case 'bad_state':
+      return 'This order is not at a stage where the code can be verified.';
+    default:
+      return 'Could not verify the code. Please try again.';
+  }
+}
+
+export default async function OrderTrackingPage({ params, searchParams }: PageProps) {
   const { orderNumber } = await params;
+  const sp = await searchParams;
 
   const order = await prisma.order.findUnique({
     where: { order_number: orderNumber },
@@ -28,8 +48,12 @@ export default async function OrderTrackingPage({ params }: PageProps) {
   const jar = await cookies();
   const codePlain = jar.get(`vdr_dc_${order.order_number}`)?.value ?? null;
   const nextStatus = nextHappyStatus(order.status);
+  const atDoor = order.status === 'OUT_FOR_DELIVERY' || order.status === 'ARRIVED';
+  const showCodeEntry = process.env.NODE_ENV !== 'production' && atDoor;
+  // At the door, the ONLY route to DELIVERED is the delivery code — so hide the
+  // dev stage-advance shortcut there and let the code-entry card own it.
   const showDevAdvance =
-    process.env.NODE_ENV !== 'production' && nextStatus !== null;
+    process.env.NODE_ENV !== 'production' && nextStatus !== null && !atDoor;
 
   return (
     <main className="bg-neutral-50 min-h-screen">
@@ -127,6 +151,53 @@ export default async function OrderTrackingPage({ params }: PageProps) {
                     Open a dispute
                   </Link>
                 </div>
+              </div>
+            )}
+
+            {/* Driver-at-the-door code verification (dev affordance for the
+                real mechanism; production = driver app + driver auth, P7). */}
+            {showCodeEntry && (
+              <div className="rounded-xl border-2 border-red-300 bg-neutral-0 p-6">
+                <p className="text-xs font-bold uppercase tracking-widest text-red-700">
+                  Driver · verify delivery
+                </p>
+                <h3 className="mt-1 text-lg font-bold text-neutral-900">
+                  Enter the buyer&apos;s 6-digit code
+                </h3>
+                <p className="mt-1 text-sm text-neutral-700">
+                  No code, no handoff. The correct code confirms delivery and starts the
+                  24-hour escrow release window.
+                </p>
+                {sp.codeError && (
+                  <div className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">
+                    {codeErrorMessage(sp.codeError, sp.left)}
+                  </div>
+                )}
+                <form action={verifyDeliveryCodeAtDoor} className="mt-3 flex flex-wrap items-center gap-2">
+                  <input type="hidden" name="orderNumber" value={order.order_number} />
+                  <input
+                    name="code"
+                    inputMode="numeric"
+                    pattern="\d{6}"
+                    maxLength={6}
+                    required
+                    autoComplete="off"
+                    placeholder="••••••"
+                    aria-label="6-digit delivery code"
+                    className="w-44 rounded-lg border border-neutral-300 px-3 py-2 text-center text-lg tracking-[0.4em] text-neutral-900 focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-200"
+                    style={{ fontFamily: 'var(--font-jetbrains-mono)' }}
+                  />
+                  <button
+                    type="submit"
+                    className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-neutral-0 hover:bg-red-700"
+                  >
+                    Verify code
+                  </button>
+                </form>
+                <p className="mt-2 text-xs text-amber-700">
+                  Dev tool · not in production. The assigned driver enters this in the
+                  driver app (P7); the verification + escrow logic itself is real.
+                </p>
               </div>
             )}
 

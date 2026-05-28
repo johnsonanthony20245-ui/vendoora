@@ -35,13 +35,18 @@ export async function advanceOrderStatus(formData: FormData): Promise<void> {
   const next = nextHappyStatus(order.status);
   if (!next) return; // already at the end or in a failure state
 
+  // The DELIVERED transition is owned by the delivery-code mechanism
+  // (verifyDeliveryCodeAtDoor → confirmDeliveryByCode). The dev shortcut must
+  // not let an order reach DELIVERED — and thus start escrow release — without
+  // a verified code. It walks the order only up to ARRIVED.
+  if (next === 'DELIVERED') return;
+
   await prisma.$transaction(async (tx) => {
     await tx.order.update({
       where: { id: order.id },
       data: {
         status: next,
         status_updated_at: new Date(),
-        ...(next === 'DELIVERED' ? { delivered_at: new Date() } : {}),
       },
     });
 
