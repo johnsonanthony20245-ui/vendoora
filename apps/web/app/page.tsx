@@ -50,9 +50,17 @@ function extractCity(address: unknown): string {
   return 'Monrovia';
 }
 
-// Time-since labels mirror the prototype's curated set. Production wires this
-// to `created_at`.
-const JUST_LISTED_TIME_AGO = ['4m ago', '12m ago', '32m ago', '1h ago', '2h ago', '3h ago'];
+// Short "time since listed" label computed from the product's real created_at.
+function relativeTimeShort(date: Date): string {
+  const seconds = Math.max(0, Math.floor((Date.now() - date.getTime()) / 1000));
+  if (seconds < 60) return 'just now';
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
 
 // Placeholder-gradient tone class per prototype.
 const TONE_BY_INDEX = ['wrap', 'food', 'beauty', 'crafts', 'home', 'electronics'];
@@ -284,7 +292,7 @@ export default async function HomePage() {
           <div className="just-listed-row">
             {justListed.map((p, i) => {
               const city = extractCity(p.seller.business_address);
-              const timeAgo = JUST_LISTED_TIME_AGO[i] ?? '5h ago';
+              const timeAgo = relativeTimeShort(p.created_at);
               return (
                 <Link
                   key={p.id}
@@ -491,12 +499,23 @@ export default async function HomePage() {
                 Nearby sellers deliver fastest — most orders within 90 minutes
               </div>
             </div>
+            {/*
+              §5 STOP-AND-FLAG (Build_Fidelity_Directive): these neighborhood
+              tabs can't filter for real yet — there is no Seller→service-area /
+              delivery-zone relation in the schema and products have no
+              shipping_zones seeded, so there's nothing to filter sellers by.
+              Rather than fake the buttons, this is flagged for a data-model
+              decision: (a) add a Seller service-area/zone relation + seed it, or
+              (b) drop the extra tabs. Until then only "Sinkor" (where the real
+              sellers are) is active and the rest are honestly disabled — a
+              not-yet-available control, not a dead one pretending to work.
+            */}
             <div className="city-selector">
               <button type="button" className="active">Sinkor</button>
-              <button type="button">Paynesville</button>
-              <button type="button">Old Road</button>
-              <button type="button">Congo Town</button>
-              <button type="button">Bushrod</button>
+              <button type="button" disabled aria-disabled title="Coming soon">Paynesville</button>
+              <button type="button" disabled aria-disabled title="Coming soon">Old Road</button>
+              <button type="button" disabled aria-disabled title="Coming soon">Congo Town</button>
+              <button type="button" disabled aria-disabled title="Coming soon">Bushrod</button>
             </div>
           </div>
           <div className="home-sellers-grid">

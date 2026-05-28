@@ -67,10 +67,7 @@ export function ProtoPageFooter() {
         </div>
       </div>
       <div className="page-footer-bottom">
-        <span>
-          © 2026 Vendoora · Registered in Liberia ·{' '}
-          <strong>LBR-2026-XXXXX</strong>
-        </span>
+        <span>© 2026 Vendoora · Monrovia, Liberia</span>
         <span><strong>Made in Monrovia</strong></span>
       </div>
     </footer>

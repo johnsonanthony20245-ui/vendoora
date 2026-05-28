@@ -1,7 +1,18 @@
 import Link from 'next/link';
 import { BRAND_NAME } from '@vendoora/types';
+import { getTrustStats } from '../../lib/trust';
 
-export const dynamic = 'force-static';
+export const dynamic = 'force-dynamic';
+
+/** Compact USD, e.g. 0 → "$0", 2400000 → "$2.4M". */
+function formatUsdCompact(n: number): string {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    notation: 'compact',
+    maximumFractionDigits: 1,
+  }).format(n);
+}
 
 export const metadata = {
   title: `Trust Center — ${BRAND_NAME}`,
@@ -9,7 +20,8 @@ export const metadata = {
     "Every dollar. Every order. Verified at the door. How Vendoora protects buyers and sellers.",
 };
 
-export default function TrustCenterPage() {
+export default async function TrustCenterPage() {
+  const stats = await getTrustStats();
   return (
     <main className="bg-neutral-50">
       {/* Hero */}
@@ -101,18 +113,17 @@ export default function TrustCenterPage() {
         </div>
       </section>
 
-      {/* Live stats (illustrative) */}
+      {/* Live stats — real DB aggregates (lib/trust.ts) */}
       <section className="bg-blue-900 px-6 py-12 text-neutral-0">
         <div className="mx-auto max-w-5xl">
           <div className="grid grid-cols-2 gap-6 md:grid-cols-4">
-            <Stat value="$2.4M" label="In escrow right now" />
-            <Stat value="99.7%" label="Code-verified delivery" />
-            <Stat value="0.4%" label="Dispute rate" />
-            <Stat value="100%" label="Sellers KYC-verified" />
+            <Stat value={formatUsdCompact(stats.escrowHeldUsd)} label="In escrow right now" />
+            <Stat value={`${stats.codeVerifiedPct}%`} label="Code-verified delivery" />
+            <Stat value={`${stats.disputeRatePct}%`} label="Dispute rate" />
+            <Stat value={`${stats.sellersVerifiedPct}%`} label="Sellers KYC-verified" />
           </div>
           <p className="mt-6 text-center text-xs text-blue-200">
-            Illustrative — production wires these to real read models that refresh every
-            15 minutes and auto-hide any stat that degrades below threshold.
+            Live figures from the marketplace, computed on each request.
           </p>
         </div>
       </section>
