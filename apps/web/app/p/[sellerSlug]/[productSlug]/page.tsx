@@ -89,6 +89,51 @@ export default async function ProductDetailPage({ params }: PageProps) {
   });
   if (!product) notFound();
 
+  // Real reviews + histogram via subject_type/id polymorphic lookup. Most
+  // recent first; cap at 8 cards on the PDP — full list ships in a later
+  // /p/[seller]/[product]/reviews slice.
+  const [reviews, histogramRaw, authorById] = await Promise.all([
+    prisma.review.findMany({
+      where: {
+        subject_type: 'PRODUCT',
+        subject_id: product.id,
+        status: 'PUBLISHED',
+      },
+      orderBy: { created_at: 'desc' },
+      take: 8,
+    }),
+    prisma.review.groupBy({
+      by: ['rating'],
+      where: {
+        subject_type: 'PRODUCT',
+        subject_id: product.id,
+        status: 'PUBLISHED',
+      },
+      _count: { _all: true },
+    }),
+    (async () => {
+      const ids = await prisma.review.findMany({
+        where: {
+          subject_type: 'PRODUCT',
+          subject_id: product.id,
+          status: 'PUBLISHED',
+        },
+        select: { author_user_id: true },
+        distinct: ['author_user_id'],
+      });
+      if (ids.length === 0) return new Map<string, { full_name: string }>();
+      const authors = await prisma.user.findMany({
+        where: { id: { in: ids.map((r) => r.author_user_id) } },
+        select: { id: true, full_name: true },
+      });
+      return new Map(authors.map((a) => [a.id, { full_name: a.full_name }]));
+    })(),
+  ]);
+
+  const histogram: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+  for (const row of histogramRaw) histogram[row.rating] = row._count._all;
+  const totalReviews = Object.values(histogram).reduce((s, n) => s + n, 0);
+
   const price = Number(product.base_price);
   const compareAt = product.compare_at_price ? Number(product.compare_at_price) : null;
   const savings = compareAt && compareAt > price ? Math.round((1 - price / compareAt) * 100) : 0;
@@ -368,7 +413,7 @@ export default async function ProductDetailPage({ params }: PageProps) {
         </section>
 
         {/* ============ REVIEWS ============ */}
-        {product.rating_count > 0 && (
+        {totalReviews > 0 && (
           <section className="reviews-section">
             <h2 className="section-title" style={{ marginBottom: 'var(--space-4)' }}>
               Buyer reviews
@@ -380,38 +425,42 @@ export default async function ProductDetailPage({ params }: PageProps) {
                 </div>
                 <div className="review-avg-stars">★★★★★</div>
                 <div className="review-avg-count">
-                  {product.rating_count} verified purchases
+                  {totalReviews}{' '}
+                  {totalReviews === 1 ? 'verified purchase' : 'verified purchases'}
                 </div>
               </div>
               <div>
-                <RatingBar stars={5} pct={82} count={Math.round(product.rating_count * 0.82)} />
-                <RatingBar stars={4} pct={12} count={Math.round(product.rating_count * 0.12)} />
-                <RatingBar stars={3} pct={3}  count={Math.round(product.rating_count * 0.03)} />
-                <RatingBar stars={2} pct={2}  count={Math.round(product.rating_count * 0.02)} />
-                <RatingBar stars={1} pct={1}  count={Math.round(product.rating_count * 0.01)} />
+                {[5, 4, 3, 2, 1].map((stars) => {
+                  const count = histogram[stars] ?? 0;
+                  const pct = totalReviews === 0 ? 0 : (count / totalReviews) * 100;
+                  return (
+                    <RatingBar key={stars} stars={stars} pct={pct} count={count} />
+                  );
+                })}
               </div>
             </div>
 
-            {/* Stub review cards — production wires to prisma.review.findMany */}
-            <ReviewCard
-              author="Fatu Kollie"
-              initials="FK"
-              date="2 weeks ago"
-              rating={5}
-              verified
-              body={`Exactly as described — arrived in 36 hours, packaging perfect. The driver waited while I inspected before I gave him the code. That's the part I love most.`}
-              helpful={24}
-            />
-            <ReviewCard
-              author="James Williams"
-              initials="JW"
-              date="1 month ago"
-              rating={5}
-              verified
-              diaspora
-              body={`Sent this to my mother in Paynesville. Got the photo of her holding it the same day. Going to be a regular for me.`}
-              helpful={18}
-            />
+            {reviews.map((r) => {
+              const author = authorById.get(r.author_user_id);
+              const fullName = author?.full_name ?? 'Anonymous';
+              const initials = fullName
+                .split(/\s+/)
+                .map((p) => p[0]?.toUpperCase() ?? '')
+                .slice(0, 2)
+                .join('');
+              return (
+                <ReviewCard
+                  key={r.id}
+                  author={fullName}
+                  initials={initials}
+                  date={relativeDate(r.created_at)}
+                  rating={r.rating}
+                  verified={r.verified_purchase}
+                  body={r.body}
+                  helpful={r.helpful_count}
+                />
+              );
+            })}
           </section>
         )}
       </div>
@@ -505,4 +554,21 @@ function extractCity(address: unknown): string {
     if (typeof v === 'string' && v.length > 0) return v;
   }
   return 'Monrovia';
+}
+
+/** "12 days ago" / "3 months ago" / "just now". Server-rendered so the
+ * format is deterministic across hydration. */
+function relativeDate(date: Date): string {
+  const diffMs = Date.now() - date.getTime();
+  const diffMin = Math.floor(diffMs / 60_000);
+  if (diffMin < 1) return 'just now';
+  if (diffMin < 60) return `${diffMin} minute${diffMin === 1 ? '' : 's'} ago`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return `${diffHr} hour${diffHr === 1 ? '' : 's'} ago`;
+  const diffDay = Math.floor(diffHr / 24);
+  if (diffDay < 30) return `${diffDay} day${diffDay === 1 ? '' : 's'} ago`;
+  const diffMo = Math.floor(diffDay / 30);
+  if (diffMo < 12) return `${diffMo} month${diffMo === 1 ? '' : 's'} ago`;
+  const diffYr = Math.floor(diffMo / 12);
+  return `${diffYr} year${diffYr === 1 ? '' : 's'} ago`;
 }
