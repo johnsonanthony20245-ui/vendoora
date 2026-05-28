@@ -122,6 +122,10 @@ export async function releaseAllEligibleEscrow(
       scheduled_release_at: { lte: now },
       order: { status: 'DELIVERED' },
     },
+    // Oldest-due first so a backlog larger than `limit` can never starve the
+    // most-overdue holds — guaranteed FIFO progress. Backed by
+    // @@index([scheduled_release_at]) on EscrowHold.
+    orderBy: { scheduled_release_at: 'asc' },
     select: { order_id: true },
     take: limit,
   });
