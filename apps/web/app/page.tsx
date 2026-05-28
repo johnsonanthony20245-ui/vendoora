@@ -516,7 +516,7 @@ export default async function HomePage() {
                     </div>
                     <div className="home-seller-stats">
                       <span><strong>{s.productCount}</strong> products</span>
-                      <span><strong>{s.ratingCount.toLocaleString('en-US')}</strong> reviews</span>
+                      <span><strong>{s.totalOrders.toLocaleString('en-US')}</strong> orders</span>
                     </div>
                   </div>
                 </Link>

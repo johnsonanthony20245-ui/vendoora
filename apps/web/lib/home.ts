@@ -7,6 +7,13 @@ import { prisma } from '@vendoora/db';
  * automatically as the marketplace does.
  */
 
+/** City the marketplace is anchored in — fallback + delivery-average filter. */
+const HOME_CITY = 'Monrovia';
+/** Delivery-time fallback (hours) when no Monrovia zone estimate exists yet. */
+const DEFAULT_DELIVERY_HOURS = 24;
+/** Every order creates an EscrowHold in the order pipeline — true by design. */
+const ESCROW_INVARIANT_PCT = 100;
+
 export interface HomeStats {
   /** KYC-approved, non-suspended, non-deleted sellers. */
   verifiedSellers: number;
@@ -35,16 +42,21 @@ export async function getHomeStats(): Promise<HomeStats> {
 
   const countiesServed = new Set(activeZones.map((z) => z.county)).size;
 
-  const monroviaZones = activeZones.filter((z) => z.city === 'Monrovia');
+  const cityZones = activeZones.filter((z) => z.city === HOME_CITY);
   const avgDeliveryHours =
-    monroviaZones.length > 0
+    cityZones.length > 0
       ? Math.round(
-          monroviaZones.reduce((sum, z) => sum + z.estimated_delivery_hours, 0) /
-            monroviaZones.length,
+          cityZones.reduce((sum, z) => sum + z.estimated_delivery_hours, 0) /
+            cityZones.length,
         )
-      : 24;
+      : DEFAULT_DELIVERY_HOURS;
 
-  return { verifiedSellers, countiesServed, escrowPct: 100, avgDeliveryHours };
+  return {
+    verifiedSellers,
+    countiesServed,
+    escrowPct: ESCROW_INVARIANT_PCT,
+    avgDeliveryHours,
+  };
 }
 
 export interface NearbySeller {
@@ -57,6 +69,8 @@ export interface NearbySeller {
   ratingCount: number;
   /** Published, approved products this seller currently lists. */
   productCount: number;
+  /** Lifetime completed orders — a distinct activity/trust signal. */
+  totalOrders: number;
   city: string;
 }
 
@@ -79,7 +93,7 @@ function cityOf(address: unknown): string {
     const v = (address as { city?: unknown }).city;
     if (typeof v === 'string' && v.length > 0) return v;
   }
-  return 'Monrovia';
+  return HOME_CITY;
 }
 
 /**
@@ -102,6 +116,7 @@ export async function getNearbySellers(limit = 4): Promise<NearbySeller[]> {
       kyc_tier: true,
       rating_average: true,
       rating_count: true,
+      total_orders: true,
       business_address: true,
     },
   });
@@ -128,6 +143,7 @@ export async function getNearbySellers(limit = 4): Promise<NearbySeller[]> {
     ratingAverage: s.rating_average,
     ratingCount: s.rating_count,
     productCount: countBySeller.get(s.id) ?? 0,
+    totalOrders: s.total_orders,
     city: cityOf(s.business_address),
   }));
 }

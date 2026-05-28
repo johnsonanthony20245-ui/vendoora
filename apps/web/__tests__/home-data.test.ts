@@ -118,6 +118,7 @@ describe('getNearbySellers', () => {
       expect(s.slug.length).toBeGreaterThan(0);
       expect(s.initials.length).toBeGreaterThan(0);
       expect(s.ratingCount).toBeGreaterThanOrEqual(0);
+      expect(s.totalOrders).toBeGreaterThanOrEqual(0);
       expect(s.city.length).toBeGreaterThan(0);
     }
   });
