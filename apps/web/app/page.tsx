@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { prisma } from '@vendoora/db';
 import { ProtoPageFooter } from '../components/ProtoPageFooter';
+import { getHomeStats, getNearbySellers } from '../lib/home';
 
 /**
  * Homepage — mirrors docs/prototype/Vendoora_App.html `Screens.home()`.
@@ -12,9 +13,10 @@ import { ProtoPageFooter } from '../components/ProtoPageFooter';
  *
  * Data sources:
  *   - Featured products / Just listed — real Prisma queries (seeded).
- *   - Sinkor sellers, console mock numbers, stats bar, hero phone
- *     badges — illustrative stubs matching the prototype's hand-curated
- *     values. Flagged in comments; production wires them to real reads.
+ *   - Stats bar + "Verified sellers in Sinkor" cards — real reads via
+ *     lib/home.ts (getHomeStats / getNearbySellers).
+ *   - Console mock numbers + hero phone badges — illustrative values baked
+ *     into the prototype's marketing visuals; flagged in comments.
  *
  * Prices use the prototype's renderPrice() helper logic with
  * audience='local' (LRD primary, USD secondary, 180 LRD/USD reference).
@@ -55,17 +57,12 @@ const JUST_LISTED_TIME_AGO = ['4m ago', '12m ago', '32m ago', '1h ago', '2h ago'
 // Placeholder-gradient tone class per prototype.
 const TONE_BY_INDEX = ['wrap', 'food', 'beauty', 'crafts', 'home', 'electronics'];
 
-// Sinkor city sellers — prototype hardcodes these. Production wires to
-// "top sellers near buyer within delivery zone".
-const STUB_CITY_SELLERS = [
-  { name: 'Konah Boutique',     banner: 'a', initials: 'KB', tier: 3, meta: 'Sinkor · ★ 4.7 (412) · 2.4 km away',   products: 89,  avgDelivery: '38min' },
-  { name: 'Anthony’s Goods',    banner: 'c', initials: 'AG', tier: 3, meta: 'Sinkor · ★ 4.8 (612) · 1.8 km away',   products: 67,  avgDelivery: '32min' },
-  { name: 'Grace’s Beauty Bar', banner: 'd', initials: 'GB', tier: 2, meta: 'Sinkor · ★ 4.6 (218) · 3.1 km away',   products: 52,  avgDelivery: '45min' },
-  { name: 'Tubman Foods',       banner: 'b', initials: 'TF', tier: 3, meta: 'Sinkor · ★ 4.9 (1,247) · 0.9 km away', products: 134, avgDelivery: '22min' },
-] as const;
+// Banner/avatar tone per seller card — purely visual, assigned by position so
+// the row keeps the prototype's alternating-colour rhythm.
+const SELLER_BANNER_TONES = ['a', 'c', 'd', 'b'] as const;
 
 export default async function HomePage() {
-  const [featured, justListed] = await Promise.all([
+  const [featured, justListed, stats, nearbySellers] = await Promise.all([
     prisma.product.findMany({
       where: { status: 'PUBLISHED', moderation_status: 'APPROVED', deleted_at: null },
       orderBy: [{ is_featured: 'desc' }, { rating_average: 'desc' }, { created_at: 'desc' }],
@@ -85,6 +82,8 @@ export default async function HomePage() {
         },
       },
     }),
+    getHomeStats(),
+    getNearbySellers(4),
   ]);
 
   return (
@@ -501,22 +500,28 @@ export default async function HomePage() {
             </div>
           </div>
           <div className="home-sellers-grid">
-            {STUB_CITY_SELLERS.map((s) => (
-              <div key={s.name} className="home-seller-card">
-                <div className={`home-seller-banner ${s.banner}`}>
-                  <span className="home-seller-tier-pill">✓ TIER {s.tier} · VERIFIED</span>
-                </div>
-                <div className="home-seller-body">
-                  <div className={`home-seller-avatar ${s.banner}`}>{s.initials}</div>
-                  <div className="home-seller-name">{s.name}</div>
-                  <div className="home-seller-meta">{s.meta}</div>
-                  <div className="home-seller-stats">
-                    <span><strong>{s.products}</strong> products</span>
-                    <span><strong>{s.avgDelivery}</strong> avg delivery</span>
+            {nearbySellers.map((s, i) => {
+              const tone = SELLER_BANNER_TONES[i % SELLER_BANNER_TONES.length];
+              const rating = s.ratingAverage?.toFixed(1) ?? '—';
+              return (
+                <Link key={s.slug} href={`/store/${s.slug}`} className="home-seller-card">
+                  <div className={`home-seller-banner ${tone}`}>
+                    <span className="home-seller-tier-pill">✓ TIER {s.tier} · VERIFIED</span>
                   </div>
-                </div>
-              </div>
-            ))}
+                  <div className="home-seller-body">
+                    <div className={`home-seller-avatar ${tone}`}>{s.initials}</div>
+                    <div className="home-seller-name">{s.name}</div>
+                    <div className="home-seller-meta">
+                      {s.city} · ★ {rating} ({s.ratingCount.toLocaleString('en-US')})
+                    </div>
+                    <div className="home-seller-stats">
+                      <span><strong>{s.productCount}</strong> products</span>
+                      <span><strong>{s.ratingCount.toLocaleString('en-US')}</strong> reviews</span>
+                    </div>
+                  </div>
+                </Link>
+              );
+            })}
           </div>
         </section>
 
@@ -672,23 +677,23 @@ export default async function HomePage() {
           </div>
         </section>
 
-        {/* ============ STATS BAR ============ */}
+        {/* ============ STATS BAR (real reads via getHomeStats) ============ */}
         <section className="stats-bar">
           <div className="stats-grid">
             <div className="stat-item">
-              <div className="stat-num">1,200<span>+</span></div>
+              <div className="stat-num">{stats.verifiedSellers.toLocaleString('en-US')}</div>
               <div className="stat-label">Verified sellers across Liberia</div>
             </div>
             <div className="stat-item">
-              <div className="stat-num">100<span>%</span></div>
+              <div className="stat-num">{stats.escrowPct}<span>%</span></div>
               <div className="stat-label">Orders protected by escrow</div>
             </div>
             <div className="stat-item">
-              <div className="stat-num">7</div>
+              <div className="stat-num">{stats.countiesServed}</div>
               <div className="stat-label">Counties served at launch</div>
             </div>
             <div className="stat-item">
-              <div className="stat-num">24<span>hr</span></div>
+              <div className="stat-num">{stats.avgDeliveryHours}<span>hr</span></div>
               <div className="stat-label">Average delivery in Monrovia</div>
             </div>
           </div>
