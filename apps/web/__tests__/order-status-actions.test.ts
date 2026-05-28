@@ -87,7 +87,10 @@ describe('advanceOrderStatus', () => {
     expect(audits.length).toBeGreaterThanOrEqual(1);
   });
 
-  it('walks the full happy path PAID → COMPLETED in 8 advances', async () => {
+  it('walks PAID → ARRIVED, then stops at the delivery-code boundary', async () => {
+    // The dev shortcut walks the order up to ARRIVED. The DELIVERED transition
+    // is owned by the delivery-code mechanism (confirmDeliveryByCode), so the
+    // shortcut refuses to cross ARRIVED → DELIVERED.
     const expected = [
       'ACCEPTED',
       'PREPARING',
@@ -95,8 +98,6 @@ describe('advanceOrderStatus', () => {
       'PICKED_UP',
       'OUT_FOR_DELIVERY',
       'ARRIVED',
-      'DELIVERED',
-      'COMPLETED',
     ];
 
     for (const want of expected) {
@@ -107,13 +108,20 @@ describe('advanceOrderStatus', () => {
       const order = await prisma.order.findUnique({ where: { id: testOrderId } });
       expect(order?.status).toBe(want);
     }
+
+    // One more advance at ARRIVED is refused — status stays ARRIVED.
+    const fd = new FormData();
+    fd.set('orderNumber', testOrderNumber);
+    await advanceOrderStatus(fd);
+    const order = await prisma.order.findUnique({ where: { id: testOrderId } });
+    expect(order?.status).toBe('ARRIVED');
   });
 
-  it('is a no-op when already at COMPLETED', async () => {
-    // First walk all the way to COMPLETED.
+  it('is a no-op once it reaches the ARRIVED delivery-code boundary', async () => {
+    // Walk up to ARRIVED (the highest status the shortcut produces).
     while (true) {
       const o = await prisma.order.findUnique({ where: { id: testOrderId } });
-      if (!o || o.status === 'COMPLETED') break;
+      if (!o || o.status === 'ARRIVED') break;
       const fd = new FormData();
       fd.set('orderNumber', testOrderNumber);
       await advanceOrderStatus(fd);
@@ -123,7 +131,7 @@ describe('advanceOrderStatus', () => {
       where: { order_id: testOrderId },
     });
 
-    // Try to advance again — should no-op
+    // Try to advance again — should no-op (DELIVERED is code-owned).
     const fd = new FormData();
     fd.set('orderNumber', testOrderNumber);
     await advanceOrderStatus(fd);
@@ -134,10 +142,12 @@ describe('advanceOrderStatus', () => {
     expect(historyAfter).toBe(historyBefore);
 
     const order = await prisma.order.findUnique({ where: { id: testOrderId } });
-    expect(order?.status).toBe('COMPLETED');
+    expect(order?.status).toBe('ARRIVED');
   });
 
   it('nextHappyStatus mapping is correct', () => {
+    // nextHappyStatus is the pure linear map; the ARRIVED→DELIVERED *guard*
+    // lives in advanceOrderStatus, not here, so this mapping is unchanged.
     expect(nextHappyStatus('PAID')).toBe('ACCEPTED');
     expect(nextHappyStatus('ARRIVED')).toBe('DELIVERED');
     expect(nextHappyStatus('COMPLETED')).toBeNull();
@@ -145,17 +155,21 @@ describe('advanceOrderStatus', () => {
     expect(nextHappyStatus('DISPUTED')).toBeNull();
   });
 
-  it('sets delivered_at on the DELIVERED transition', async () => {
-    // Walk to DELIVERED
+  it('refuses to advance ARRIVED → DELIVERED (owned by the delivery-code path)', async () => {
     while (true) {
       const o = await prisma.order.findUnique({ where: { id: testOrderId } });
-      if (!o || o.status === 'DELIVERED') break;
+      if (!o || o.status === 'ARRIVED') break;
       const fd = new FormData();
       fd.set('orderNumber', testOrderNumber);
       await advanceOrderStatus(fd);
     }
+
+    const fd = new FormData();
+    fd.set('orderNumber', testOrderNumber);
+    await advanceOrderStatus(fd);
+
     const order = await prisma.order.findUnique({ where: { id: testOrderId } });
-    expect(order?.status).toBe('DELIVERED');
-    expect(order?.delivered_at).not.toBeNull();
+    expect(order?.status).toBe('ARRIVED');
+    expect(order?.delivered_at).toBeNull();
   });
 });
