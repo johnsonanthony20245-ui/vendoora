@@ -43,11 +43,13 @@ Then the specification set (the *what* and *how*):
     `RELEASING → RELEASED` (real payout webhook — payments, below).
   - **Payments** — SCAFFOLD-ONLY. `placeOrder` auto-captures with `provider:'WALLET'`; no
     Stripe / MTN MoMo / Orange Money adapters or webhooks. Needs sandbox keys (§Credentials).
-  - **KYC** — T1 application submit is real; document upload (needs R2), T2+ review queue,
-    and capability tier-gating are absent.
-- **Worker scheduler:** `apps/worker` runs a real single-process polling loop. Production
-  target is BullMQ repeatable jobs on Upstash Redis (Engineering_Spec §6.4) — flagged §5,
-  gated on `UPSTASH_REDIS_*`; the job logic is unchanged when it swaps.
+  - **KYC** — T1 submit + **admin review queue & approve/deny → real tier promotion are
+    REAL** (`/admin/kyc`, `lib/kyc.ts`). Still absent: document upload (needs R2) and
+    capability tier-gating (no seller product-management flow to gate yet).
+- **Worker scheduler:** `apps/worker` runs **real BullMQ** repeatable jobs on Upstash Redis
+  when `REDIS_URL` is set (Engineering_Spec §6.4 — retries, dead-letter, multi-replica safe),
+  falling back to a single-process polling loop otherwise. Verified end-to-end against
+  sandbox Redis; the release job logic is the shared `@vendoora/domain` code.
 - **Structure:** packages present = `config, db, design-tokens, domain, types`; missing per
   Engineering_Spec §2.1 = `ui, schemas, api-client, i18n`. Apps = `web`, `worker`.
 
