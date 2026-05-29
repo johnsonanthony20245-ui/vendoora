@@ -14,10 +14,11 @@ export default async function AdminLanding() {
   const admin = await getAdminSession();
   if (!admin) redirect('/admin/sign-in');
 
-  const [openCount, breachedCount, totalDisputes] = await Promise.all([
+  const [openCount, breachedCount, totalDisputes, kycPendingCount] = await Promise.all([
     prisma.dispute.count({ where: { status: { in: ['OPEN', 'IN_REVIEW', 'PENDING_BUYER', 'PENDING_SELLER', 'ESCALATED'] } } }),
     prisma.dispute.count({ where: { sla_breached: true, status: { not: { in: ['RESOLVED_FAVOR_BUYER', 'RESOLVED_FAVOR_SELLER', 'RESOLVED_PARTIAL', 'RESOLVED_INSURANCE', 'CLOSED'] } } } }),
     prisma.dispute.count(),
+    prisma.kycApplication.count({ where: { status: { in: ['SUBMITTED', 'IN_REVIEW', 'NEEDS_MORE_INFO'] } } }),
   ]);
 
   return (
@@ -33,10 +34,11 @@ export default async function AdminLanding() {
             : 'Dev session via the vdr_admin_dev cookie. Production requires Clerk + ADMIN_CLERK_USER_IDS.'}
         </p>
 
-        <div className="mt-10 grid gap-4 md:grid-cols-3">
+        <div className="mt-10 grid gap-4 md:grid-cols-4">
           <StatCard label="Disputes — open" value={openCount} tone="amber" />
           <StatCard label="SLA breached" value={breachedCount} tone="red" />
-          <StatCard label="All-time" value={totalDisputes} tone="blue" />
+          <StatCard label="KYC — pending" value={kycPendingCount} tone="amber" />
+          <StatCard label="Disputes — all-time" value={totalDisputes} tone="blue" />
         </div>
 
         <div className="mt-10 flex flex-wrap gap-3">
@@ -45,6 +47,12 @@ export default async function AdminLanding() {
             className="rounded-lg bg-blue-700 px-5 py-2.5 text-sm font-semibold text-neutral-0 hover:bg-blue-800"
           >
             Open dispute queue →
+          </Link>
+          <Link
+            href="/admin/kyc"
+            className="rounded-lg bg-blue-700 px-5 py-2.5 text-sm font-semibold text-neutral-0 hover:bg-blue-800"
+          >
+            KYC review queue →
           </Link>
           <Link
             href="/admin/search-insights"
