@@ -40,6 +40,35 @@ export default async function OrderConfirmationPage({ params }: PageProps) {
   const jar = await cookies();
   const deliveryCodePlaintext = jar.get(`vdr_dc_${order.order_number}`)?.value ?? null;
 
+  // Async Card path: Stripe redirected back, but the payment_intent.succeeded
+  // webhook may not have run yet → order is still PENDING_PAYMENT. Show a
+  // "confirming" interstitial that meta-refreshes every 2s until it flips.
+  if (order.status === 'PENDING_PAYMENT') {
+    return (
+      <div className="proto-cart">
+        <meta httpEquiv="refresh" content="2" />
+        <div className="screen-container">
+          <div className="confirmation-hero" style={{ textAlign: 'center', padding: 'var(--space-8) var(--space-4)' }}>
+            <div className="confirmation-check" style={{ background: 'var(--amber-100)', color: 'var(--amber-700)' }}>
+              <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="9" />
+                <polyline points="12 7 12 12 15 14" />
+              </svg>
+            </div>
+            <h1 className="confirmation-title">Confirming your payment…</h1>
+            <p className="confirmation-subtitle">
+              Stripe is finalizing the charge. This page refreshes automatically — usually a few seconds.
+            </p>
+            <div className="confirmation-order-id">
+              <span style={{ color: 'var(--color-text-muted)' }}>Order</span>
+              <span>{order.order_number}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="proto-cart">
       <div className="screen-container">
