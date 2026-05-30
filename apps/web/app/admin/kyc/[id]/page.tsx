@@ -3,7 +3,8 @@ import { notFound, redirect } from 'next/navigation';
 import { prisma } from '@vendoora/db';
 import { BRAND_NAME } from '@vendoora/types';
 import { getAdminSession } from '../../../../lib/admin';
-import { reviewKyc } from '../../../actions/admin-kyc';
+import { reviewKyc, uploadKycDocument } from '../../../actions/admin-kyc';
+import { IS_R2_ENABLED, getDownloadUrl } from '../../../../lib/r2';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,9 +19,43 @@ const ERROR_COPY: Record<string, string> = {
   bad_decision: 'Pick a valid decision.',
 };
 
+const UPLOAD_ERROR_COPY: Record<string, string> = {
+  bad_doc_type: 'Pick a valid document type.',
+  bad_application: 'Application not found.',
+  missing_file: 'Choose a file to upload.',
+  bad_mime: 'Only JPEG, PNG, WebP, or PDF files are accepted.',
+  too_large: 'File is larger than 10 MB.',
+  r2_not_configured: 'Document upload is not configured in this environment.',
+  db_write_failed:
+    'The file was uploaded but could not be recorded. The orphan was cleaned up — please try again.',
+};
+
+const DOC_TYPE_OPTIONS = [
+  'GOVERNMENT_ID',
+  'SELFIE',
+  'PROOF_OF_ADDRESS',
+  'BUSINESS_REGISTRATION',
+  'TAX_CERTIFICATE',
+  'BANK_STATEMENT',
+  'DRIVER_LICENSE',
+  'VEHICLE_REGISTRATION',
+  'OTHER',
+] as const;
+
+function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 interface PageProps {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ error?: string; reviewed?: string }>;
+  searchParams: Promise<{
+    error?: string;
+    reviewed?: string;
+    uploaded?: string;
+    upload_error?: string;
+  }>;
 }
 
 export default async function AdminKycDetailPage({ params, searchParams }: PageProps) {
@@ -80,6 +115,16 @@ export default async function AdminKycDetailPage({ params, searchParams }: PageP
             {ERROR_COPY[sp.error] ?? 'Could not complete the review.'}
           </div>
         )}
+        {sp.uploaded && (
+          <div className="mt-4 rounded-lg bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800">
+            Document uploaded.
+          </div>
+        )}
+        {sp.upload_error && (
+          <div className="mt-4 rounded-lg bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+            {UPLOAD_ERROR_COPY[sp.upload_error] ?? 'Upload failed.'}
+          </div>
+        )}
 
         <div className="mt-6 grid gap-6 md:grid-cols-2">
           <Panel title="Applicant">
@@ -107,21 +152,105 @@ export default async function AdminKycDetailPage({ params, searchParams }: PageP
         <Panel title="Documents" className="mt-6">
           {application.documents.length === 0 ? (
             <p className="text-sm text-neutral-500">
-              No documents uploaded. The applicant-facing document upload requires Cloudflare
-              R2 storage (flagged §5) — until then T1 (phone + email verified at signup) is
-              reviewed without uploads.
+              No documents uploaded yet.
             </p>
           ) : (
             <ul className="space-y-2 text-sm">
-              {application.documents.map((d) => (
-                <li key={d.id} className="flex items-center justify-between gap-3">
-                  <span className="text-neutral-800">
-                    {d.doc_type.replace(/_/g, ' ')} · {d.file_name}
-                  </span>
-                  <span className="text-xs text-neutral-500">{d.status.replace(/_/g, ' ')}</span>
-                </li>
-              ))}
+              {await Promise.all(
+                application.documents.map(async (d) => {
+                  // 120s default TTL + Content-Disposition: attachment (lib/r2)
+                  // so leaked URLs expire fast and the browser downloads rather
+                  // than rendering the PII inline.
+                  const downloadUrl = IS_R2_ENABLED
+                    ? await getDownloadUrl(d.storage_url, { fileName: d.file_name })
+                    : null;
+                  return (
+                    <li
+                      key={d.id}
+                      className="flex items-center justify-between gap-3 border-b border-neutral-100 pb-2 last:border-0 last:pb-0"
+                    >
+                      <div className="text-neutral-800">
+                        <div className="font-medium">
+                          {d.doc_type.replace(/_/g, ' ')}
+                        </div>
+                        {downloadUrl ? (
+                          <a
+                            href={downloadUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs text-blue-700 hover:underline"
+                          >
+                            {d.file_name}
+                          </a>
+                        ) : (
+                          <span className="text-xs text-neutral-500">{d.file_name}</span>
+                        )}
+                        <span className="ml-2 text-xs text-neutral-500">
+                          {formatBytes(d.file_size_bytes)}
+                        </span>
+                      </div>
+                      <span className="text-xs text-neutral-500">{d.status.replace(/_/g, ' ')}</span>
+                    </li>
+                  );
+                }),
+              )}
             </ul>
+          )}
+
+          {IS_R2_ENABLED ? (
+            <form
+              action={uploadKycDocument}
+              encType="multipart/form-data"
+              className="mt-4 border-t border-neutral-200 pt-4"
+            >
+              <input type="hidden" name="applicationId" value={application.id} />
+              <div className="flex flex-wrap items-end gap-2">
+                <div className="flex-1 min-w-[160px]">
+                  <label htmlFor="doc_type" className="block text-xs font-bold uppercase tracking-widest text-neutral-600">
+                    Document type
+                  </label>
+                  <select
+                    id="doc_type"
+                    name="doc_type"
+                    defaultValue="GOVERNMENT_ID"
+                    className="mt-1 w-full rounded-lg border border-neutral-300 bg-neutral-0 px-2 py-1.5 text-sm"
+                  >
+                    {DOC_TYPE_OPTIONS.map((t) => (
+                      <option key={t} value={t}>
+                        {t.replace(/_/g, ' ')}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex-1 min-w-[200px]">
+                  <label htmlFor="file" className="block text-xs font-bold uppercase tracking-widest text-neutral-600">
+                    File <span className="font-normal normal-case text-neutral-400">(JPEG / PNG / WebP / PDF, ≤ 10 MB)</span>
+                  </label>
+                  <input
+                    id="file"
+                    name="file"
+                    type="file"
+                    required
+                    accept="image/jpeg,image/png,image/webp,application/pdf"
+                    className="mt-1 w-full text-sm"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  className="rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-neutral-0 hover:bg-blue-800"
+                >
+                  Upload
+                </button>
+              </div>
+              <p className="mt-2 text-xs text-neutral-500">
+                File streams through this Server Action straight to Cloudflare R2 (private bucket).
+                Download links above are short-lived presigned URLs.
+              </p>
+            </form>
+          ) : (
+            <p className="mt-3 text-xs text-amber-700">
+              Document upload is disabled — Cloudflare R2 is not configured.
+            </p>
           )}
         </Panel>
 
