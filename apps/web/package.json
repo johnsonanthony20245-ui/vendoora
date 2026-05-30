@@ -19,7 +19,8 @@
     "@vendoora/types": "workspace:*",
     "next": "^15.0.3",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "stripe": "^17"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",
