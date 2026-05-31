@@ -16,9 +16,15 @@ const { prisma } = await import('@vendoora/db');
 // sellers whose products may briefly hit PUBLISHED + APPROVED while a parallel
 // vitest worker is mid-assertion here. Exclude anything with a known test
 // prefix so the "every seeded product has reviews" invariant only ranges over
-// the actual seed corpus. Keep this list in sync with `const TAG = '..._test_'`
-// at the top of each peer test file.
-const TEST_SELLER_PREFIXES = ['pmod_test_', 'kyc_test_', 'tier_test_'];
+// the actual seed corpus.
+//
+// NOTE: peer suites use TWO different business_slug shapes — TAG-prefixed
+// with underscores (`pmod_test_…`, `tier_test_…`) and dashed
+// (`kyc-test-…` in admin-kyc.test.ts even though its `TAG` is
+// `kyc_test_`). Both are listed so the exclusion stays correct if any of
+// those suites grows a product fixture later. (admin-kyc doesn't create
+// products today — `kyc-test-` is defensive.)
+const TEST_SELLER_PREFIXES = ['pmod_test_', 'tier_test_', 'kyc-test-'];
 
 beforeAll(async () => {
   const total = await prisma.review.count({ where: { subject_type: 'PRODUCT' } });

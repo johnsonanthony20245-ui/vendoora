@@ -225,3 +225,31 @@ describe('reviewKycApplication — tier integrity', () => {
     expect(app?.status).toBe('DENIED'); // the upgrade itself is denied
   });
 });
+
+describe('reviewKycApplication — audit actor attribution', () => {
+  it('writes actor_clerk_id into audit metadata even when reviewerUserId is null', async () => {
+    // Same anonymization-gap guard as reviewProduct: a Clerk admin whose
+    // Vendoora User row hasn't synced should still appear in the audit trail.
+    const { applicationId } = await makeSellerWithApplication({ targetTier: 2 });
+    const clerkId = 'user_2qwertyKYCTEST00000000000';
+
+    const result = await reviewKycApplication(prisma, {
+      applicationId,
+      decision: 'APPROVE',
+      notes: 'Verified the business registration.',
+      reviewerUserId: null,
+      actorClerkId: clerkId,
+    });
+    expect(result.ok).toBe(true);
+
+    const audit = await prisma.auditLog.findFirst({
+      where: { resource_id: applicationId, action: 'kyc.approved' },
+    });
+    expect(audit).not.toBeNull();
+    expect(audit?.actor_user_id).toBeNull();
+    expect(audit?.actor_system).toBe(true);
+    expect((audit?.metadata as { actor_clerk_id?: string } | null)?.actor_clerk_id).toBe(
+      clerkId,
+    );
+  });
+});

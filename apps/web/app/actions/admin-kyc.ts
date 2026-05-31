@@ -33,10 +33,14 @@ export async function reviewKyc(formData: FormData): Promise<void> {
 
   // KycApplication.reviewer_user_id is a FK to User — resolve the admin's
   // Vendoora user id from their Clerk id (null in the dev-cookie path).
+  // The Clerk id ALSO rides through into audit metadata so a missing
+  // User-row sync doesn't anonymize the decision into actor_system. Same
+  // pattern as uploadKycDocument and moderateProduct.
   let reviewerUserId: string | null = null;
-  if (admin.kind === 'clerk' && admin.clerk_user_id) {
+  const actorClerkId = admin.kind === 'clerk' ? admin.clerk_user_id : null;
+  if (actorClerkId) {
     const reviewer = await prisma.user.findUnique({
-      where: { clerk_id: admin.clerk_user_id },
+      where: { clerk_id: actorClerkId },
       select: { id: true },
     });
     reviewerUserId = reviewer?.id ?? null;
@@ -47,6 +51,7 @@ export async function reviewKyc(formData: FormData): Promise<void> {
     decision,
     notes,
     reviewerUserId,
+    actorClerkId,
   });
 
   if (!result.ok) {
