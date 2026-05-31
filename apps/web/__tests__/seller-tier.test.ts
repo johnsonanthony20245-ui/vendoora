@@ -15,7 +15,6 @@ const { prisma } = await import('@vendoora/db');
 const { getListingUsage, LISTING_LIMIT_BY_PLAN } = await import('../lib/seller-tier');
 
 const TAG = 'tier_test_';
-let userId = '';
 let sellerId = '';
 let categoryId = '';
 
@@ -41,7 +40,6 @@ beforeEach(async () => {
     },
     select: { id: true },
   });
-  userId = user.id;
   const seller = await prisma.seller.create({
     data: {
       user_id: user.id,
