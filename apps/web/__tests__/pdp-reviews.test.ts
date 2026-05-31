@@ -12,6 +12,14 @@ process.env.DATABASE_URL = process.env.DATABASE_URL_TEST;
 
 const { prisma } = await import('@vendoora/db');
 
+// Other suites (admin-products, seller-tier, admin-kyc) create test-tagged
+// sellers whose products may briefly hit PUBLISHED + APPROVED while a parallel
+// vitest worker is mid-assertion here. Exclude anything with a known test
+// prefix so the "every seeded product has reviews" invariant only ranges over
+// the actual seed corpus. Keep this list in sync with `const TAG = '..._test_'`
+// at the top of each peer test file.
+const TEST_SELLER_PREFIXES = ['pmod_test_', 'kyc_test_', 'tier_test_'];
+
 beforeAll(async () => {
   const total = await prisma.review.count({ where: { subject_type: 'PRODUCT' } });
   if (total < 18) {
@@ -32,6 +40,10 @@ describe('PDP reviews', () => {
         status: 'PUBLISHED',
         moderation_status: 'APPROVED',
         deleted_at: null,
+        // Skip products attached to test-tagged sellers (see TEST_SELLER_PREFIXES).
+        seller: {
+          NOT: TEST_SELLER_PREFIXES.map((p) => ({ business_slug: { startsWith: p } })),
+        },
       },
       select: { id: true, name: true },
     });
@@ -49,7 +61,13 @@ describe('PDP reviews', () => {
 
   it('groupBy by rating returns the histogram shape the PDP renders', async () => {
     const product = await prisma.product.findFirst({
-      where: { status: 'PUBLISHED', moderation_status: 'APPROVED' },
+      where: {
+        status: 'PUBLISHED',
+        moderation_status: 'APPROVED',
+        seller: {
+          NOT: TEST_SELLER_PREFIXES.map((p) => ({ business_slug: { startsWith: p } })),
+        },
+      },
     });
     if (!product) throw new Error('No published product seeded');
 
@@ -70,7 +88,13 @@ describe('PDP reviews', () => {
 
   it('product.rating_average reflects the actual review average', async () => {
     const product = await prisma.product.findFirst({
-      where: { status: 'PUBLISHED', moderation_status: 'APPROVED' },
+      where: {
+        status: 'PUBLISHED',
+        moderation_status: 'APPROVED',
+        seller: {
+          NOT: TEST_SELLER_PREFIXES.map((p) => ({ business_slug: { startsWith: p } })),
+        },
+      },
     });
     if (!product) throw new Error('No published product seeded');
 
