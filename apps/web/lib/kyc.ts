@@ -52,12 +52,24 @@ export async function reviewKycApplication(
     applicationId: string;
     decision: KycDecision;
     reviewerUserId?: string | null;
+    /**
+     * The reviewer's Clerk user id, when the reviewer was authenticated via
+     * Clerk. Written into `auditLog.metadata.actor_clerk_id` so the action
+     * stays attributable to a real person even when the Vendoora `User` row
+     * for that Clerk id hasn't been synced yet — without this the `null`
+     * `reviewerUserId` collapses into `actor_system: true`, making a real
+     * admin's decision indistinguishable from an automated one.
+     *
+     * Pattern matches `uploadKycDocument` (apps/web/app/actions/admin-kyc.ts).
+     */
+    actorClerkId?: string | null;
     notes?: string;
     now?: Date;
   },
 ): Promise<KycReviewResult> {
   const { applicationId, decision } = args;
   const reviewerUserId = args.reviewerUserId ?? null;
+  const actorClerkId = args.actorClerkId ?? null;
   const notes = (args.notes ?? '').trim();
   const now = args.now ?? new Date();
 
@@ -162,6 +174,7 @@ export async function reviewKycApplication(
           seller_id: sellerId,
           seller_missing: application.applicant_type === 'SELLER' && sellerId === null,
           notes: notes.length > 0 ? notes : null,
+          actor_clerk_id: actorClerkId,
         } satisfies Prisma.InputJsonValue,
       },
     });

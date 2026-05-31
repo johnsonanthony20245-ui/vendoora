@@ -264,3 +264,54 @@ describe('reviewProduct — concurrent reviewers', () => {
     expect(product?.status).toBe('PUBLISHED');
   });
 });
+
+describe('reviewProduct — audit actor attribution', () => {
+  it('writes actor_clerk_id into audit metadata even when reviewerUserId is null', async () => {
+    // This guards against the anonymization gap surfaced by the code review of
+    // PR #26: a Clerk-authenticated admin whose Vendoora User row hasn't been
+    // synced yet would otherwise hit `reviewerUserId: null` and the audit row
+    // would collapse to actor_system: true with no Clerk id anywhere. The
+    // actor_clerk_id ride-through preserves the real reviewer's identity.
+    const { productId } = await makeDraftProduct();
+    const clerkId = 'user_2qwertyTEST00000000000000';
+
+    const result = await reviewProduct(prisma, {
+      productId,
+      decision: 'APPROVE',
+      notes: 'Auditing the audit trail.',
+      reviewerUserId: null,
+      actorClerkId: clerkId,
+    });
+    expect(result.ok).toBe(true);
+
+    const audit = await prisma.auditLog.findFirst({
+      where: { resource_id: productId, action: 'product.approved' },
+    });
+    expect(audit).not.toBeNull();
+    expect(audit?.actor_user_id).toBeNull();
+    expect(audit?.actor_system).toBe(true);
+    // The Clerk id must be discoverable in metadata even when the User-row
+    // path zeroed out the FK column. This is the whole point of the field.
+    expect((audit?.metadata as { actor_clerk_id?: string } | null)?.actor_clerk_id).toBe(
+      clerkId,
+    );
+  });
+
+  it('omits actor_clerk_id (null) for a dev-cookie reviewer', async () => {
+    const { productId } = await makeDraftProduct();
+
+    const result = await reviewProduct(prisma, {
+      productId,
+      decision: 'APPROVE',
+      notes: 'Dev cookie review — no Clerk identity to record.',
+      reviewerUserId: null,
+      // actorClerkId omitted → defaults to null
+    });
+    expect(result.ok).toBe(true);
+
+    const audit = await prisma.auditLog.findFirst({
+      where: { resource_id: productId, action: 'product.approved' },
+    });
+    expect((audit?.metadata as { actor_clerk_id?: string | null } | null)?.actor_clerk_id).toBeNull();
+  });
+});

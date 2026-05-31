@@ -106,3 +106,53 @@ export async function getDownloadUrl(
     { expiresIn: opts.expiresInSeconds ?? 120 },
   );
 }
+
+/**
+ * Resolve a `ProductImage.url` value into a fetchable browser URL.
+ *
+ * `ProductImage.url` is dual-purpose by history:
+ *   - **Seed data** (pre-seller-console) stored full https:// URLs, so the
+ *     value can be rendered directly.
+ *   - **Seller uploads** (PR #25, `createProduct` action) store the R2
+ *     **object key** of the uploaded image, not a URL. Rendering that
+ *     verbatim produces a broken `<img>`.
+ *
+ * This resolver bridges both shapes:
+ *   - `https://…` / `http://…` → passthrough.
+ *   - anything else → treated as an R2 object key and presigned.
+ *
+ * Unlike {@link getDownloadUrl} (KYC), we do **NOT** set
+ * `Content-Disposition: attachment`. Product images render INLINE in
+ * `<img>` / CSS `background-image`; forcing `attachment` would turn every
+ * card on the homepage into a download. The polyglot-file concern that
+ * justifies `attachment` for KYC PII does not apply here — product images
+ * are public, ranked behind moderation, and not user-private documents.
+ *
+ * Returns `null` when the value is an R2 key but R2 isn't configured in
+ * this environment; callers (storefront, admin moderation detail) render a
+ * placeholder instead of breaking the page.
+ *
+ * Default TTL: **1 hour**. Long enough that a server-rendered page's URLs
+ * don't expire mid-session for a slow reader; short enough that a leaked
+ * URL doesn't grant indefinite access. The detail page on the moderation
+ * queue uses the default; the public storefront can pass a longer TTL.
+ */
+export async function resolveProductImageUrl(
+  stored: string,
+  opts: { expiresInSeconds?: number } = {},
+): Promise<string | null> {
+  if (stored.startsWith('https://') || stored.startsWith('http://')) {
+    return stored;
+  }
+  if (!IS_R2_ENABLED) {
+    return null;
+  }
+  return getSignedUrl(
+    getR2Client(),
+    new GetObjectCommand({
+      Bucket: getR2Bucket(),
+      Key: stored,
+    }),
+    { expiresIn: opts.expiresInSeconds ?? 60 * 60 },
+  );
+}

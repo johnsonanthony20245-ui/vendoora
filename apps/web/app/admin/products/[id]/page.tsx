@@ -1,13 +1,9 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
-import {
-  GetObjectCommand,
-  S3Client,
-} from '@aws-sdk/client-s3';
-import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { prisma } from '@vendoora/db';
 import { BRAND_NAME } from '@vendoora/types';
 import { getAdminSession } from '../../../../lib/admin';
+import { resolveProductImageUrl } from '../../../../lib/r2';
 import { moderateProduct } from '../../../actions/admin-products';
 
 export const dynamic = 'force-dynamic';
@@ -27,42 +23,6 @@ const ERROR_COPY: Record<string, string> = {
 interface PageProps {
   params: Promise<{ id: string }>;
   searchParams: Promise<{ error?: string; reviewed?: string }>;
-}
-
-/**
- * Resolve `ProductImage.url` to a fetchable URL.
- *
- * Seed data: full https://. Seller uploads via PR #25's `createProduct`: R2
- * object key. Inlined here because the shared resolver is on a sibling branch
- * (`feat/product-image-resolver`) that hasn't landed yet; a follow-up PR will
- * consolidate into lib/r2.ts so storefront + admin share one implementation.
- *
- * 1-hour TTL — enough for a reviewer to load the page and the bytes to arrive,
- * short enough that a leaked URL doesn't grant indefinite access to a possibly
- * unapproved listing.
- */
-async function resolveImageUrl(stored: string): Promise<string | null> {
-  if (stored.startsWith('https://') || stored.startsWith('http://')) {
-    return stored;
-  }
-  const accountId = process.env.R2_ACCOUNT_ID;
-  const accessKeyId = process.env.R2_ACCESS_KEY_ID;
-  const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY;
-  const endpoint = process.env.R2_ENDPOINT;
-  const bucket = process.env.R2_BUCKET;
-  if (!accountId || !accessKeyId || !secretAccessKey || !endpoint || !bucket) {
-    return null; // R2 not configured — image is a key but we can't sign it
-  }
-  const client = new S3Client({
-    region: 'auto',
-    endpoint,
-    credentials: { accessKeyId, secretAccessKey },
-  });
-  return getSignedUrl(
-    client,
-    new GetObjectCommand({ Bucket: bucket, Key: stored }),
-    { expiresIn: 60 * 60 },
-  );
 }
 
 export default async function AdminProductReviewPage({ params, searchParams }: PageProps) {
@@ -93,7 +53,7 @@ export default async function AdminProductReviewPage({ params, searchParams }: P
   const resolvedImages = await Promise.all(
     product.images.map(async (img) => ({
       id: img.id,
-      url: await resolveImageUrl(img.url),
+      url: await resolveProductImageUrl(img.url),
       alt_text: img.alt_text ?? '',
     })),
   );

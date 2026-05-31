@@ -25,10 +25,13 @@ export async function moderateProduct(formData: FormData): Promise<void> {
   const notes = String(formData.get('notes') ?? '').trim();
 
   // Resolve reviewer's Vendoora User.id from Clerk id (FK on auditLog).
+  // The Clerk id ALSO rides through into audit metadata so a missing
+  // User-row sync doesn't anonymize the decision into actor_system.
   let reviewerUserId: string | null = null;
-  if (admin.kind === 'clerk' && admin.clerk_user_id) {
+  const actorClerkId = admin.kind === 'clerk' ? admin.clerk_user_id : null;
+  if (actorClerkId) {
     const reviewer = await prisma.user.findUnique({
-      where: { clerk_id: admin.clerk_user_id },
+      where: { clerk_id: actorClerkId },
       select: { id: true },
     });
     reviewerUserId = reviewer?.id ?? null;
@@ -39,6 +42,7 @@ export async function moderateProduct(formData: FormData): Promise<void> {
     decision,
     notes,
     reviewerUserId,
+    actorClerkId,
   });
 
   if (!result.ok) {
