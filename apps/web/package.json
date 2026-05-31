@@ -12,6 +12,8 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "3",
+    "@aws-sdk/s3-request-presigner": "3",
     "@clerk/nextjs": "^7.4.1",
     "@stripe/react-stripe-js": "3",
     "@stripe/stripe-js": "5",
