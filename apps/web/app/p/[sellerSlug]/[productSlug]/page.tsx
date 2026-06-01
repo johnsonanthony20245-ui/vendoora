@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { prisma } from '@vendoora/db';
 import { addToCart } from '../../../actions/cart';
+import { resolveProductImageUrl } from '../../../../lib/r2';
 
 /**
  * Product detail page — mirrors docs/prototype/Vendoora_App.html
@@ -139,7 +140,13 @@ export default async function ProductDetailPage({ params }: PageProps) {
   const savings = compareAt && compareAt > price ? Math.round((1 - price / compareAt) * 100) : 0;
   const authenticity = mapAuthenticity(product.authenticity_status);
   const condition = CONDITION_LABEL[product.condition] ?? { label: product.condition, desc: '' };
-  const primaryImageUrl = product.images[0]?.url;
+  // Resolve every image URL up front so the hero AND the thumbnail strip can
+  // render bytes for both seed https URLs and seller-uploaded R2 keys (PR #25).
+  // See lib/r2.ts:resolveProductImageUrl.
+  const resolvedImageUrls = await Promise.all(
+    product.images.map((img) => resolveProductImageUrl(img.url)),
+  );
+  const primaryImageUrl = resolvedImageUrls[0] ?? null;
 
   // Authenticity badge in the badges row
   const authBadge =
@@ -197,7 +204,9 @@ export default async function ProductDetailPage({ params }: PageProps) {
                     key={img.id}
                     className={`pdp-thumb${i === 0 ? ' active' : ''}`}
                     style={{
-                      background: `center / cover no-repeat url(${img.url})`,
+                      background: resolvedImageUrls[i]
+                        ? `center / cover no-repeat url(${resolvedImageUrls[i]})`
+                        : 'var(--color-neutral-100)',
                     }}
                   />
                 ))}

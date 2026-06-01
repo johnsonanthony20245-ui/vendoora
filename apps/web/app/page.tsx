@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { prisma } from '@vendoora/db';
 import { ProtoPageFooter } from '../components/ProtoPageFooter';
 import { getHomeStats, getNearbySellers } from '../lib/home';
+import { resolveProductImageUrl } from '../lib/r2';
 
 /**
  * Homepage — mirrors docs/prototype/Vendoora_App.html `Screens.home()`.
@@ -93,6 +94,15 @@ export default async function HomePage() {
     getHomeStats(),
     getNearbySellers(4),
   ]);
+
+  // Resolve each featured card's primary image URL. `images[0]?.url` is an
+  // https URL for seed data and an R2 object key for seller uploads (PR #25);
+  // resolveProductImageUrl bridges both shapes. See lib/r2.ts.
+  const featuredImageUrls = await Promise.all(
+    featured.map((p) =>
+      p.images[0]?.url ? resolveProductImageUrl(p.images[0].url) : Promise.resolve(null),
+    ),
+  );
 
   return (
     <div className="proto-home">
@@ -419,12 +429,13 @@ export default async function HomePage() {
             <Link href="/search" className="section-link">See all →</Link>
           </div>
           <div className="product-grid">
-            {featured.map((p) => {
+            {featured.map((p, idx) => {
               const seller = p.seller;
               const tier = seller.kyc_tier;
               const tierClass = tier >= 4 ? 'tier-4' : tier >= 3 ? 'tier-3' : 'tier-2';
               const tierLabel = tier >= 4 ? 'T4 ELITE' : `T${tier} VERIFIED`;
               const trustScore = 82 + (p.id.charCodeAt(p.id.length - 1) % 16);
+              const resolvedImageUrl = featuredImageUrls[idx];
               return (
                 <Link
                   key={p.id}
@@ -437,10 +448,10 @@ export default async function HomePage() {
                       background: 'radial-gradient(ellipse 80% 60% at 50% 45%, #B6C5EC 0%, #8FA5DD 55%, #5A78C9 100%)',
                     }}
                   >
-                    {p.images[0]?.url && (
+                    {resolvedImageUrl && (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
-                        src={p.images[0].url}
+                        src={resolvedImageUrl}
                         alt={p.name}
                         style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                       />
