@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ChangeEvent, DragEvent } from 'react';
 import { validateProductImageFile } from '../lib/product-image-upload';
+import type { ProductImageRejectReason } from '../lib/product-image-upload';
 
 interface ImageUploadProps {
   name: string;
@@ -12,7 +13,7 @@ interface ImageUploadProps {
 
 const ACCEPT = 'image/jpeg,image/png,image/webp';
 
-const REJECT_COPY: Record<'empty' | 'bad_mime' | 'too_large', string> = {
+const REJECT_COPY: Record<ProductImageRejectReason, string> = {
   empty: 'That file is empty. Pick another image.',
   bad_mime: 'Only JPEG, PNG, or WebP images are accepted.',
   too_large: 'Image is larger than 5 MB.',
@@ -116,6 +117,8 @@ export function ImageUpload({ name, required = false, disabled = false }: ImageU
         />
 
         {preview ? (
+          // z-20 sits above the z-10 input but is pointer-events-none, so clicking
+          // the zone still reaches the input to re-pick; only Remove re-enables clicks.
           <div className="pointer-events-none relative z-20 flex flex-col items-center gap-3">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
