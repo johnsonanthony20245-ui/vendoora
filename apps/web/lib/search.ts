@@ -25,6 +25,7 @@
  *   - 'rating'    rating_average desc nulls last
  */
 import { Prisma, prisma } from '@vendoora/db';
+import { resolveProductImageUrl } from './r2';
 
 const DEFAULT_PER_PAGE = 24;
 const MAX_PER_PAGE = 60;
@@ -97,7 +98,13 @@ const BASE_INCLUDE = {
 
 type ProductWithRelations = Prisma.ProductGetPayload<{ include: typeof BASE_INCLUDE }>;
 
-function toHit(p: ProductWithRelations): SearchProductHit {
+async function toHit(p: ProductWithRelations): Promise<SearchProductHit> {
+  // `images[0].url` is a dual-purpose field: full https URLs for seed data,
+  // R2 object keys for seller uploads (PR #25). Resolve every hit here so
+  // browse/search result cards render bytes for both shapes. See lib/r2.ts.
+  const raw = p.images[0]?.url ?? null;
+  const primary_image_url = raw ? await resolveProductImageUrl(raw) : null;
+
   return {
     id: p.id,
     slug: p.slug,
@@ -111,7 +118,7 @@ function toHit(p: ProductWithRelations): SearchProductHit {
     authenticity_status: p.authenticity_status,
     is_featured: p.is_featured,
     seller: p.seller,
-    primary_image_url: p.images[0]?.url ?? null,
+    primary_image_url,
   };
 }
 
@@ -195,7 +202,7 @@ export async function searchProducts(filters: SearchFilters = {}): Promise<Searc
     ]);
 
     return {
-      products: rows.map(toHit),
+      products: await Promise.all(rows.map(toHit)),
       totalCount,
       page,
       perPage,
@@ -236,7 +243,7 @@ export async function searchProducts(filters: SearchFilters = {}): Promise<Searc
     .filter((p): p is ProductWithRelations => p !== undefined);
 
   return {
-    products: ordered.map(toHit),
+    products: await Promise.all(ordered.map(toHit)),
     totalCount,
     page,
     perPage,

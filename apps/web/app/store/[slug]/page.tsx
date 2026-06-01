@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { prisma } from '@vendoora/db';
 import { ProductCard, type ProductCardData } from '../../../components/ProductCard';
 import { KycTierBadge } from '../../../components/TrustPills';
+import { resolveProductImageUrl } from '../../../lib/r2';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,16 +35,23 @@ export default async function StorefrontPage({ params }: PageProps) {
     },
   });
 
-  const cards: ProductCardData[] = products.map((p) => ({
-    id: p.id,
-    slug: p.slug,
-    name: p.name,
-    base_price: p.base_price.toString(),
-    compare_at_price: p.compare_at_price ? p.compare_at_price.toString() : null,
-    condition: p.condition,
-    seller: p.seller,
-    primary_image_url: p.images[0]?.url ?? null,
-  }));
+  // `images[0]?.url` may be an https URL (seed) or an R2 object key (seller
+  // upload via createProduct, PR #25). resolveProductImageUrl handles both.
+  // See lib/r2.ts.
+  const cards: ProductCardData[] = await Promise.all(
+    products.map(async (p) => ({
+      id: p.id,
+      slug: p.slug,
+      name: p.name,
+      base_price: p.base_price.toString(),
+      compare_at_price: p.compare_at_price ? p.compare_at_price.toString() : null,
+      condition: p.condition,
+      seller: p.seller,
+      primary_image_url: p.images[0]?.url
+        ? await resolveProductImageUrl(p.images[0].url)
+        : null,
+    })),
+  );
 
   const ratingText =
     seller.rating_average !== null && seller.rating_count > 0
