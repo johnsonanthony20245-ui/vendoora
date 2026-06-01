@@ -98,7 +98,17 @@ describe('getNearbySellers', () => {
 
   it('each seller productCount matches a direct published-product count', async () => {
     const sellers = await getNearbySellers(4);
+    // Peer suites (admin-products, seller-moderation-feedback) briefly create
+    // products on tier-2 test-tagged sellers and approve them in their
+    // assertion path. Because only 3 sellers are seeded at tier >=3, the 4th
+    // slot of getNearbySellers can pick up such a test seller — and the
+    // direct count below races with the test's afterAll cleanup, making the
+    // exact-equality check flap. Skip test-tagged sellers; the seeded sellers
+    // (Konah, Sundayma, Mariama) carry the assertion. Same isolation pattern
+    // as pdp-reviews.test.ts.
+    const TEST_SELLER_PREFIXES = ['pmod_test_', 'pfeedback_test_', 'tier_test_', 'kyc-test-'];
     for (const s of sellers) {
+      if (TEST_SELLER_PREFIXES.some((p) => s.slug.startsWith(p))) continue;
       const seller = await prisma.seller.findUnique({
         where: { business_slug: s.slug },
         select: { id: true },
