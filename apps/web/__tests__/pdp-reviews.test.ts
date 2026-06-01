@@ -24,7 +24,7 @@ const { prisma } = await import('@vendoora/db');
 // `kyc_test_`). Both are listed so the exclusion stays correct if any of
 // those suites grows a product fixture later. (admin-kyc doesn't create
 // products today — `kyc-test-` is defensive.)
-const TEST_SELLER_PREFIXES = ['pmod_test_', 'tier_test_', 'kyc-test-'];
+const TEST_SELLER_PREFIXES = ['pmod_test_', 'pedit_test_', 'tier_test_', 'kyc-test-'];
 
 beforeAll(async () => {
   const total = await prisma.review.count({ where: { subject_type: 'PRODUCT' } });
