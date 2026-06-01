@@ -77,9 +77,23 @@ and `user-sync` keep working; citext makes them case-insensitive.
 ## Out of scope
 
 - `orders.buyer_email` — a recorded contact field, not identity-matched; keep exact
-  case for receipts.
+  case for receipts. Known asymmetry: a guest who types `Joe@x.com` then `joe@x.com`
+  now reuses one `users` row (good) but their two orders store `buyer_email` with
+  differing case. Intended (display fidelity); only matters if future analytics dedupe
+  on `orders.buyer_email` directly, which would then need its own case-fold.
 - `users.phone` (`@unique`) — a separate E.164 normalization concern.
 - `sellers.business_email` — not identity-unique-matched.
+
+## Production-apply notes
+
+- `ALTER COLUMN ... TYPE citext` takes an `ACCESS EXCLUSIVE` lock and rewrites the
+  table plus both email indexes. On today's tiny `users` table this is sub-second.
+  If `users` grows large before this ships to prod, switch to a concurrent pattern
+  (add a citext column → backfill → swap) instead of an inline `ALTER TYPE`.
+- Re-run the "zero case-insensitive duplicate emails" precheck against the **production**
+  dataset immediately before `migrate deploy` — the collision-free guarantee here was
+  established against dev + test only. If prod holds a case-only dup the `ALTER` fails
+  loudly (intended), but better to learn that before the deploy window.
 
 ## Testing (real DB, extend `apps/web/__tests__/order-buyer-identity.test.ts`)
 
@@ -101,5 +115,8 @@ Apply the migration to dev + test DBs, then: type-check · lint ·
 ## Rollback
 
 `ALTER TABLE "users" ALTER COLUMN "email" SET DATA TYPE TEXT;` restores the prior
-byte-exact behavior (stored values are unchanged, since citext preserved them). The
-`citext` extension can be left installed (harmless) or dropped if unused elsewhere.
+byte-exact behavior (stored values are unchanged, since citext preserved them).
+Rolling back is safe: because the citext unique index prevented any case-variant
+duplicate from being created while it was active, reverting to TEXT cannot surface a
+hidden collision. The `citext` extension can be left installed (harmless) or dropped if
+unused elsewhere.
