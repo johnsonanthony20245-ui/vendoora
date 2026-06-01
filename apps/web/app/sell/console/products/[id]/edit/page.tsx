@@ -5,6 +5,7 @@ import { BRAND_NAME } from '@vendoora/types';
 import { getSellerSession } from '../../../../../../lib/seller-auth';
 import { IS_R2_ENABLED } from '../../../../../../lib/r2';
 import { updateProduct } from '../../../../../actions/seller-products';
+import { ImageUpload } from '../../../../../../components/ImageUpload';
 
 export const dynamic = 'force-dynamic';
 
@@ -217,14 +218,7 @@ export default async function EditProductPage({ params, searchParams }: PageProp
             label="Replace primary image"
             help="Optional. JPEG / PNG / WebP, ≤ 5 MB. Leave blank to keep the current image."
           >
-            <input
-              id="image"
-              name="image"
-              type="file"
-              accept="image/jpeg,image/png,image/webp"
-              className="w-full text-sm"
-              disabled={!IS_R2_ENABLED}
-            />
+            <ImageUpload name="image" disabled={!IS_R2_ENABLED} />
           </Field>
 
           <div className="flex items-center justify-between border-t border-neutral-200 pt-5">

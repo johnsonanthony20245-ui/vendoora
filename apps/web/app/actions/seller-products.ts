@@ -11,9 +11,11 @@ import {
   validateProductInput,
   type ProductEditInput,
 } from '../../lib/product-edit';
+import {
+  ALLOWED_PRODUCT_IMAGE_MIME,
+  MAX_PRODUCT_IMAGE_BYTES,
+} from '../../lib/product-image-upload';
 
-const ALLOWED_IMAGE_MIME = new Set(['image/jpeg', 'image/png', 'image/webp']);
-const MAX_IMAGE_BYTES = 5 * 1024 * 1024; // 5 MB
 const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 const VALID_CONDITIONS = new Set(['NEW', 'LIKE_NEW', 'USED_GOOD', 'USED_FAIR', 'REFURBISHED', 'FOR_PARTS']);
@@ -111,10 +113,10 @@ export async function createProduct(formData: FormData): Promise<void> {
   if (!(image instanceof File) || image.size === 0) {
     redirect('/sell/console/products/new?error=missing_image');
   }
-  if (!ALLOWED_IMAGE_MIME.has(image.type)) {
+  if (!ALLOWED_PRODUCT_IMAGE_MIME.has(image.type)) {
     redirect('/sell/console/products/new?error=bad_mime');
   }
-  if (image.size > MAX_IMAGE_BYTES) {
+  if (image.size > MAX_PRODUCT_IMAGE_BYTES) {
     redirect('/sell/console/products/new?error=too_large');
   }
   if (!IS_R2_ENABLED) {
@@ -288,10 +290,10 @@ export async function updateProduct(formData: FormData): Promise<void> {
   let newImageKey: string | null = null;
   const image = formData.get('image');
   if (image instanceof File && image.size > 0) {
-    if (!ALLOWED_IMAGE_MIME.has(image.type)) {
+    if (!ALLOWED_PRODUCT_IMAGE_MIME.has(image.type)) {
       redirect(`${editPath}?error=bad_mime`);
     }
-    if (image.size > MAX_IMAGE_BYTES) {
+    if (image.size > MAX_PRODUCT_IMAGE_BYTES) {
       redirect(`${editPath}?error=too_large`);
     }
     if (!IS_R2_ENABLED) {
