@@ -81,47 +81,57 @@ interface ImageUploadProps {
   name: string;          // form field name, e.g. "image"
   required?: boolean;    // create=true, edit=false
   disabled?: boolean;    // passed !IS_R2_ENABLED
-  helpText?: string;     // small caption under the dropzone
 }
 ```
+
+(No `helpText` prop — the forms' existing `Field` wrapper already renders the
+label + help line.)
 
 Behavior:
 
 - Renders a dashed-border dropzone matching the existing form design system
   (`border-2 border-dashed border-neutral-300`, hover/drag-over →
   `border-blue-500 bg-blue-50`), with a centered prompt:
-  "Click to upload or drag and drop · JPEG, PNG, WebP up to 5 MB".
-- Holds a real `<input ref type="file" name={name} accept="image/jpeg,image/png,image/webp">`
-  that is **visually clipped** (an `sr-only`-style class — `absolute`, size 0,
-  clipped), **not** `display:none`, so native `required` constraint validation
-  still fires on submit when empty. (Browsers skip validation for `display:none`
-  inputs.)
-- Click anywhere on the dropzone → `inputRef.current.click()`.
-- Drag events (`dragenter`/`dragover`/`dragleave`/`drop`) toggle a highlighted
-  state; `preventDefault` on dragover/drop. On drop, take `e.dataTransfer.files[0]`,
-  validate it, and on success assign it to the input via a fresh `DataTransfer`
-  (`inputRef.current.files = dt.files`) so it submits like a normal pick.
-- On `change` (click path) or successful drop: validate via
+  "Click to upload or drag and drop · JPEG, PNG, or WebP up to 5 MB".
+- Holds a real `<input type="file" name={name} accept="image/jpeg,image/png,image/webp">`
+  rendered as a **transparent overlay** (`absolute inset-0`, full size, `opacity-0`,
+  `z-10`), **not** `display:none`. Because it is a real, focusable, full-size
+  input:
+  - clicking anywhere on the zone opens the native file picker (no JS click shim);
+  - native `required` constraint validation fires on empty submit (the input is
+    visible and focusable, unlike a `display:none` field);
+  - **dropping a file onto it sets `.files` and fires `change` natively** — no
+    manual `DataTransfer` is needed.
+- `onChange` (covers both click-select and native drop): validate via
   `validateProductImageFile({ type, size })`. Invalid → inline red error message,
-  clear the input, no preview. Valid → set a preview thumbnail
+  clear the input (`input.value = ''`), no preview. Valid → set a preview thumbnail
   (`URL.createObjectURL(file)`) shown with the file name + human-readable size and a
   **Remove** button.
+- A wrapping container handles `onDragOver` / `onDragLeave` purely to toggle the
+  drag-over highlight (visual only; the overlay input does the actual file capture).
+- The dropzone content (`pointer-events-none`) sits above the input visually but
+  lets clicks fall through to the input; the **Remove** button re-enables
+  `pointer-events-auto` and a higher `z` so it stays clickable.
 - **Remove** clears the input value and selected state and revokes the object URL.
   The object URL is also revoked on unmount and whenever it is replaced, to avoid
   leaks.
-- `disabled` greys out the dropzone, blocks click/drop, and disables the input.
+- `disabled` greys out the dropzone and disables the input (native disabled inputs
+  ignore clicks/drops and are skipped by form validation).
 
 ### Modified — the two form pages
 
 In each form, replace the existing `<input type="file" ...>` inside its `Field`
 wrapper with `<ImageUpload .../>`:
 
-- `new/page.tsx`: `<ImageUpload name="image" required disabled={!IS_R2_ENABLED} helpText="JPEG / PNG / WebP, ≤ 5 MB. Uploaded to Cloudflare R2 and shown on the public PDP." />`
-- `[id]/edit/page.tsx`: `<ImageUpload name="image" disabled={!IS_R2_ENABLED} helpText="Optional. JPEG / PNG / WebP, ≤ 5 MB. Leave blank to keep the current image." />`
+- `new/page.tsx`: `<ImageUpload name="image" required disabled={!IS_R2_ENABLED} />`
+  inside the existing `<Field id="image" label="Primary image" required help="…">`.
+- `[id]/edit/page.tsx`: `<ImageUpload name="image" disabled={!IS_R2_ENABLED} />`
+  inside the existing `<Field id="image" label="Replace primary image" help="…">`
   (not `required` — image replacement is optional on edit).
 
-The surrounding `Field` label, the `<form action={...}>`, the field name `image`,
-and every other field are unchanged.
+The surrounding `Field` (label + help), the `<form action={...}>`, the field name
+`image`, and every other field are unchanged. The overlay input carries `id={name}`
+so the `Field`'s `htmlFor="image"` label association still resolves.
 
 ### Modified — `apps/web/app/actions/seller-products.ts`
 
