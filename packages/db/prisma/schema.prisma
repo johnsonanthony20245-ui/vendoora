@@ -635,6 +635,10 @@ model Order {
   @@index([payment_status])
   @@index([group_gift_id])
   @@index([created_at])
+  // Composite for the checkout-expiry sweep's FIFO candidate query
+  // (WHERE status = 'PENDING_PAYMENT' AND created_at <= cutoff ORDER BY created_at ASC).
+  // Leading `status` equality + `created_at` range/sort served by one index.
+  @@index([status, created_at])
   @@map("orders")
 }
 
