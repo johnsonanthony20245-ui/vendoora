@@ -6,6 +6,11 @@ import { prisma, type Prisma } from '@vendoora/db';
 import { getSellerSession } from '../../lib/seller-auth';
 import { getListingUsage, type SellerPlan } from '../../lib/seller-tier';
 import { IS_R2_ENABLED, uploadObject, deleteObject } from '../../lib/r2';
+import {
+  updateSellerProduct,
+  validateProductInput,
+  type ProductEditInput,
+} from '../../lib/product-edit';
 
 const ALLOWED_IMAGE_MIME = new Set(['image/jpeg', 'image/png', 'image/webp']);
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024; // 5 MB
@@ -210,4 +215,119 @@ export async function createProduct(formData: FormData): Promise<void> {
     redirect('/sell/console/products/new?error=db_write_failed');
   }
   redirect(`/sell/console?created=${encodeURIComponent(createdSlug)}`);
+}
+
+/**
+ * Edit a REJECTED (or still-PENDING) product and resubmit it for moderation.
+ *
+ * Closes the loop opened by the seller-console rejection feedback (PR #28):
+ * the seller fixes the listing and resubmits, which flips moderation_status
+ * back to PENDING via lib/product-edit.updateSellerProduct. The image is
+ * OPTIONAL on edit — if the seller attaches a new file we upload it and the lib
+ * repoints the primary ProductImage, returning the old key so we can delete the
+ * orphaned R2 object after the DB write commits. Field validation runs BEFORE
+ * any R2 upload so a bad form never burns an upload.
+ */
+export async function updateProduct(formData: FormData): Promise<void> {
+  const session = await getSellerSession();
+  if (!session) redirect('/sell/sign-in');
+
+  const seller = await prisma.seller.findUnique({
+    where: { id: session.sellerId },
+    select: { id: true, business_slug: true },
+  });
+  if (!seller) redirect('/sell/sign-in');
+
+  const productId = String(formData.get('product_id') ?? '').trim();
+  if (!productId) redirect('/sell/console');
+
+  const editPath = `/sell/console/products/${productId}/edit`;
+
+  // ---- form parse ----
+  const input: ProductEditInput = {
+    name: String(formData.get('name') ?? '').trim(),
+    slug: String(formData.get('slug') ?? '').trim().toLowerCase(),
+    short_description: String(formData.get('short_description') ?? '').trim(),
+    description: String(formData.get('description') ?? '').trim(),
+    category_id: String(formData.get('category_id') ?? '').trim(),
+    condition: String(formData.get('condition') ?? '').trim(),
+    base_price: String(formData.get('base_price') ?? '').trim(),
+    compare_at_price: String(formData.get('compare_at_price') ?? '').trim(),
+  };
+
+  // ---- fail fast on field errors BEFORE touching R2 ----
+  const validated = validateProductInput(input);
+  if (!validated.ok) {
+    redirect(`${editPath}?error=${validated.reason}`);
+  }
+
+  // ---- resolve actor for audit ----
+  let actorUserId: string | null = null;
+  const actorClerkId = session.kind === 'clerk' ? session.clerk_user_id : null;
+  if (actorClerkId) {
+    const u = await prisma.user.findUnique({
+      where: { clerk_id: actorClerkId },
+      select: { id: true },
+    });
+    actorUserId = u?.id ?? null;
+  }
+
+  // ---- optional image replacement ----
+  let newImageKey: string | null = null;
+  const image = formData.get('image');
+  if (image instanceof File && image.size > 0) {
+    if (!ALLOWED_IMAGE_MIME.has(image.type)) {
+      redirect(`${editPath}?error=bad_mime`);
+    }
+    if (image.size > MAX_IMAGE_BYTES) {
+      redirect(`${editPath}?error=too_large`);
+    }
+    if (!IS_R2_ENABLED) {
+      redirect(`${editPath}?error=r2_not_configured`);
+    }
+    const safeFileName = image.name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 120);
+    newImageKey = `products/${seller.id}/${randomUUID()}-${safeFileName}`;
+    const bytes = Buffer.from(await image.arrayBuffer());
+    await uploadObject({
+      key: newImageKey,
+      body: bytes,
+      contentType: image.type,
+      contentLength: image.size,
+    });
+  }
+
+  // ---- apply the edit (validates + guards ownership/state inside) ----
+  const result = await updateSellerProduct(prisma, {
+    sellerId: seller.id,
+    productId,
+    input,
+    actorUserId,
+    actorClerkId,
+    newPrimaryImageKey: newImageKey,
+  });
+
+  if (!result.ok) {
+    // The DB write was refused — drop the just-uploaded replacement so we don't
+    // leak orphan bytes in R2.
+    if (newImageKey) {
+      try {
+        await deleteObject(newImageKey);
+      } catch {
+        /* swallowed */
+      }
+    }
+    redirect(`${editPath}?error=${result.reason}`);
+  }
+
+  // Success: the primary image was repointed to the new key, so the previous
+  // object is now orphaned — best-effort delete it.
+  if (result.oldImageKey) {
+    try {
+      await deleteObject(result.oldImageKey);
+    } catch {
+      /* swallowed */
+    }
+  }
+
+  redirect(`/sell/console?resubmitted=${encodeURIComponent(result.slug)}`);
 }

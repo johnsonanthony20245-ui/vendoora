@@ -14,6 +14,11 @@ export const metadata = {
   title: `Seller console — ${BRAND_NAME}`,
 };
 
+// Only REJECTED or PENDING listings can be edited & resubmitted; APPROVED/
+// PUBLISHED listings are live and re-moderating them is a separate concern.
+// Mirrors EDITABLE_STATUSES in lib/product-edit.ts and the gate on the edit page.
+const EDITABLE_MODERATION = new Set(['REJECTED', 'PENDING']);
+
 export default async function SellerConsolePage() {
   const session = await getSellerSession();
   if (!session) redirect('/sell/sign-in');
@@ -142,6 +147,7 @@ export default async function SellerConsolePage() {
                     <th className="px-4 py-3">Status</th>
                     <th className="px-4 py-3">Moderation</th>
                     <th className="px-4 py-3">Created</th>
+                    <th className="px-4 py-3 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-neutral-200">
@@ -171,10 +177,22 @@ export default async function SellerConsolePage() {
                           <td className="px-4 py-3 text-xs text-neutral-500">
                             {p.created_at.toISOString().slice(0, 10)}
                           </td>
+                          <td className="px-4 py-3 text-right">
+                            {EDITABLE_MODERATION.has(p.moderation_status) ? (
+                              <Link
+                                href={`/sell/console/products/${p.id}/edit`}
+                                className="text-xs font-semibold text-blue-700 hover:underline"
+                              >
+                                Edit &amp; resubmit →
+                              </Link>
+                            ) : (
+                              <span className="text-xs text-neutral-400">—</span>
+                            )}
+                          </td>
                         </tr>
                         {fb && (
                           <tr className="bg-red-50/50">
-                            <td colSpan={5} className="px-4 py-3">
+                            <td colSpan={6} className="px-4 py-3">
                               <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2">
                                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-red-700">
                                   Reviewer feedback
@@ -185,9 +203,12 @@ export default async function SellerConsolePage() {
                                 <p className="mt-1 text-sm text-neutral-800 whitespace-pre-wrap">
                                   {fb.notes ?? 'No notes provided by the reviewer.'}
                                 </p>
-                                <p className="mt-2 text-xs text-neutral-600">
-                                  Edit the listing and re-submit it for review to clear the rejection.
-                                </p>
+                                <Link
+                                  href={`/sell/console/products/${p.id}/edit`}
+                                  className="mt-2 inline-block text-xs font-semibold text-red-700 hover:underline"
+                                >
+                                  Edit the listing and re-submit it to clear the rejection →
+                                </Link>
                               </div>
                             </td>
                           </tr>
