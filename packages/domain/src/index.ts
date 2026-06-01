@@ -5,3 +5,11 @@ export {
   type ReleaseResult,
   type ReleaseSweepResult,
 } from './escrow';
+
+export {
+  DEFAULT_EXPIRY_MS,
+  expirePendingOrder,
+  expireStalePendingOrders,
+  type ExpiryResult,
+  type ExpirySweepResult,
+} from './checkout';

@@ -1,7 +1,8 @@
-import { Queue, Worker, type RedisOptions } from 'bullmq';
+import { Queue, Worker } from 'bullmq';
 import { prisma } from '@vendoora/db';
 import { releaseAllEligibleEscrow, type ReleaseSweepResult } from '@vendoora/domain';
 import type { SchedulerHandle } from './poll-loop';
+import { connectionFromUrl } from './redis-connection';
 
 /**
  * Production scheduler (Engineering_Spec §6.4): BullMQ repeatable job on Redis.
@@ -20,20 +21,6 @@ const SCHEDULER_ID = 'escrow-auto-release-every';
 const JOB_NAME = 'sweep';
 
 type Logger = (message: string, extra?: Record<string, unknown>) => void;
-
-/** Parse a redis(s):// URL into BullMQ/ioredis connection options. */
-function connectionFromUrl(redisUrl: string): RedisOptions {
-  const u = new URL(redisUrl);
-  return {
-    host: u.hostname,
-    port: u.port ? Number(u.port) : 6379,
-    // BullMQ requires this to be null on the connections it drives.
-    maxRetriesPerRequest: null,
-    ...(u.username ? { username: decodeURIComponent(u.username) } : {}),
-    ...(u.password ? { password: decodeURIComponent(u.password) } : {}),
-    ...(u.protocol === 'rediss:' ? { tls: {} } : {}),
-  };
-}
 
 export async function startEscrowAutoReleaseWorker(opts: {
   redisUrl: string;

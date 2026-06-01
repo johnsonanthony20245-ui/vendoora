@@ -126,6 +126,9 @@ importers:
       dotenv:
         specifier: ^16.4.5
         version: 16.6.1
+      stripe:
+        specifier: ^17
+        version: 17.7.0
     devDependencies:
       '@types/node':
         specifier: ^22.9.0

@@ -15,7 +15,8 @@
     "@vendoora/db": "workspace:*",
     "@vendoora/domain": "workspace:*",
     "bullmq": "^5.34.0",
-    "dotenv": "^16.4.5"
+    "dotenv": "^16.4.5",
+    "stripe": "^17"
   },
   "devDependencies": {
     "@vendoora/config": "workspace:*",
