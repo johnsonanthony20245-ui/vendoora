@@ -165,20 +165,37 @@ export async function expireStalePendingOrders(
   let stripeCancelFailures = 0;
 
   for (const { id } of due) {
-    // expirePendingOrder commits the expiry (+ history + audit), then runs the
-    // injected Stripe cancel post-commit. If that cancel rejects it audits a
-    // payment.stripe_cancel_failed row and rethrows — the expiry already stands.
-    // The sweep catches that rejection so one bad PI cancel can't abort the rest
-    // of the batch; it is counted here purely for observability.
+    // Wrap the injected cancel so we can tell WHICH failure mode threw.
+    // expirePendingOrder commits the expiry (+ history + audit) and only THEN
+    // runs the cancel; a cancel rejection sets cancelFailed=true and is rethrown
+    // (the expiry already stands). Any OTHER throw is a genuine pre-commit
+    // failure (e.g. the DB transaction) where the order was NOT expired.
+    let cancelFailed = false;
+    const countingCancel = cancel
+      ? async (pi: string) => {
+          try {
+            await cancel(pi);
+          } catch (err) {
+            cancelFailed = true;
+            throw err;
+          }
+        }
+      : undefined;
+
     try {
       const res = await expirePendingOrder(db, {
         orderId: id,
         now,
-        ...(cancel ? { cancelStripeIntent: cancel } : {}),
+        ...(countingCancel ? { cancelStripeIntent: countingCancel } : {}),
       });
       ordersExpired += res.expiredOrderIds.length;
-    } catch {
-      // The order is EXPIRED + audited; only the post-commit cancel failed.
+    } catch (err) {
+      if (!cancelFailed) {
+        // Genuine pre-commit failure — the order was NOT expired. Don't inflate
+        // the counts; let the scheduler layer (poll-loop / BullMQ) log it.
+        throw err;
+      }
+      // Expiry committed + audited; only the post-commit Stripe cancel threw.
       ordersExpired += 1;
       stripeCancelFailures += 1;
     }
