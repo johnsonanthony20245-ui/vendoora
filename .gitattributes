@@ -1,0 +1,10 @@
+# Line-ending policy.
+#
+# Prisma's migration engine checksums each migration.sql by its raw bytes.
+# On Windows, git's core.autocrlf rewrites checked-out files to CRLF, which
+# changes those bytes and makes `prisma migrate dev` falsely report a migration
+# as "modified after it was applied" (forcing an unwanted dev-DB reset).
+# Pin SQL and Prisma schema files to LF on every platform so the checksums
+# stay stable regardless of the developer's OS or core.autocrlf setting.
+*.sql    text eol=lf
+*.prisma text eol=lf
