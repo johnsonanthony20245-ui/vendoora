@@ -24,6 +24,8 @@ const UPLOAD_ERROR_COPY: Record<string, string> = {
   bad_application: 'Application not found.',
   missing_file: 'Choose a file to upload.',
   bad_mime: 'Only JPEG, PNG, WebP, or PDF files are accepted.',
+  mime_mismatch:
+    "The file's actual contents don't match its declared type. Re-export from the source app and try again.",
   too_large: 'File is larger than 10 MB.',
   r2_not_configured: 'Document upload is not configured in this environment.',
   db_write_failed:

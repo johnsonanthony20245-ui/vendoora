@@ -36,8 +36,15 @@ export async function getTrustStats(): Promise<TrustStats> {
   const escrowHeldUsd = Number(escrowAgg._sum.amount ?? 0);
   const disputeRatePct =
     ordersTotal > 0 ? Math.round((disputesTotal / ordersTotal) * 1000) / 10 : 0;
+  // Clamp to [0, 100]. The two counts (total + approved) are separate Prisma
+  // statements and the Promise.all batches them at the network level but they
+  // still snapshot independently under Read Committed, so a concurrent write
+  // can briefly make the ratio exceed 1.0. Production stats should never
+  // display >100% — the clamp is correct user-facing behavior.
   const sellersVerifiedPct =
-    sellersTotal > 0 ? Math.round((sellersApproved / sellersTotal) * 100) : 100;
+    sellersTotal > 0
+      ? Math.min(100, Math.round((sellersApproved / sellersTotal) * 100))
+      : 100;
 
   return { escrowHeldUsd, codeVerifiedPct: 100, disputeRatePct, sellersVerifiedPct };
 }
