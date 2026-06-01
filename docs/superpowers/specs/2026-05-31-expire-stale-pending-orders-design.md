@@ -2,7 +2,7 @@
 
 **Date:** 2026-05-31
 **Phase:** P1 Foundation (post-PR-#21 follow-up)
-**Status:** Draft, pending Anthony's approval
+**Status:** Approved 2026-06-01 — ready for plan
 
 ## 0. Why
 
