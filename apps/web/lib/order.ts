@@ -191,21 +191,47 @@ export interface PendingOrder {
 }
 
 /**
- * Persist a PENDING_PAYMENT order + items + a PENDING Payment. The buyer User
- * is resolved (guest upsert) outside the transaction.
+ * Options controlling buyer attribution.
+ *
+ * `buyerUserId` — when the caller has an authenticated buyer (Clerk → local
+ * User), pass that id. It becomes authoritative for Order.buyer_user_id
+ * regardless of the contact email entered on the form, closing the gap where a
+ * signed-in buyer who typed a different email had their order forked onto an
+ * orphan guest_ row (or a guest could attach an order to any account by email).
+ * Omit it for guest checkout: the buyer is then find-or-created from the email.
  */
-export async function buildPendingOrder(db: Db, draft: OrderDraft): Promise<PendingOrder> {
-  const buyerUser =
-    (await db.user.findUnique({ where: { email: draft.buyer.email } })) ??
-    (await db.user.create({
-      data: {
-        clerk_id: `guest_${randomUUID()}`,
-        email: draft.buyer.email,
-        full_name: draft.buyer.name,
-        is_email_verified: false,
-        account_status: 'ACTIVE',
-      },
-    }));
+export interface BuildPendingOrderOptions {
+  buyerUserId?: string | null;
+}
+
+/**
+ * Persist a PENDING_PAYMENT order + items + a PENDING Payment. The buyer User
+ * is resolved (authenticated id, else guest upsert) outside the transaction.
+ */
+export async function buildPendingOrder(
+  db: Db,
+  draft: OrderDraft,
+  opts: BuildPendingOrderOptions = {},
+): Promise<PendingOrder> {
+  const buyerUser = opts.buyerUserId
+    ? // Authenticated: the signed-in account is authoritative for attribution.
+      // The form contact fields (name/email/phone) are still recorded as-is below.
+      // The caller derives buyerUserId from getCurrentBuyerUserId(), which only
+      // returns an id after syncClerkUser find-or-created the row — so this throws
+      // only if that account was hard-deleted in the sub-second gap. Throwing is
+      // intentional: never silently fork a signed-in buyer onto a guest_ row.
+      await db.user.findUniqueOrThrow({ where: { id: opts.buyerUserId } })
+    : // Guest checkout: find-or-create a guest_ user keyed by the form email.
+      ((await db.user.findUnique({ where: { email: draft.buyer.email } })) ??
+        (await db.user.create({
+          data: {
+            clerk_id: `guest_${randomUUID()}`,
+            email: draft.buyer.email,
+            full_name: draft.buyer.name,
+            is_email_verified: false,
+            account_status: 'ACTIVE',
+          },
+        })));
 
   const orderNumber = `VDR-${randomUUID().replace(/-/g, '').slice(0, 8).toUpperCase()}`;
 
