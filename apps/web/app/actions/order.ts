@@ -7,12 +7,18 @@ import {
   assembleOrderDraft,
   buildPendingOrder,
   finalizePaidOrder,
+  GuestEmailBelongsToAccountError,
   type OrderDraft,
+  type PendingOrder,
 } from '../../lib/order';
 import { IS_STRIPE_ENABLED, getStripe, getStripePublishableKey } from '../../lib/stripe';
 import { getCurrentBuyerUserId } from '../../lib/auth';
 
 const CART_COOKIE = 'vdr_cart';
+
+// Shown when a guest enters a contact email that already belongs to an account.
+const ACCOUNT_EMAIL_SIGN_IN_MESSAGE =
+  'That email belongs to a Vendoora account. Please sign in to check out.';
 
 function failValidation(message: string): never {
   redirect(`/checkout?error=${encodeURIComponent(message)}`);
@@ -64,7 +70,13 @@ export async function placeOrder(formData: FormData): Promise<void> {
   // Signed-in buyers are attributed by their authenticated account id, not the
   // form email. Guests (null) fall back to email find-or-create inside build.
   const buyerUserId = await getCurrentBuyerUserId();
-  const pending = await buildPendingOrder(prisma, draft, { buyerUserId });
+  let pending: PendingOrder;
+  try {
+    pending = await buildPendingOrder(prisma, draft, { buyerUserId });
+  } catch (err) {
+    if (err instanceof GuestEmailBelongsToAccountError) failValidation(ACCOUNT_EMAIL_SIGN_IN_MESSAGE);
+    throw err;
+  }
   const result = await finalizePaidOrder(prisma, { orderId: pending.orderId, provider: 'wallet' });
 
   // Clear the cart on success.
@@ -106,7 +118,15 @@ export async function createCardPaymentIntent(formData: FormData): Promise<Creat
 
   // Authenticated buyer is authoritative for attribution; guests resolve by email.
   const buyerUserId = await getCurrentBuyerUserId();
-  const pending = await buildPendingOrder(prisma, assembled.draft, { buyerUserId });
+  let pending: PendingOrder;
+  try {
+    pending = await buildPendingOrder(prisma, assembled.draft, { buyerUserId });
+  } catch (err) {
+    if (err instanceof GuestEmailBelongsToAccountError) {
+      return { ok: false, error: ACCOUNT_EMAIL_SIGN_IN_MESSAGE };
+    }
+    throw err;
+  }
 
   const stripe = getStripe();
   const intent = await stripe.paymentIntents.create({

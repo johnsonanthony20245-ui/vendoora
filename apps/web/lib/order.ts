@@ -205,6 +205,49 @@ export interface BuildPendingOrderOptions {
 }
 
 /**
+ * Thrown by buildPendingOrder when an unauthenticated (guest) checkout enters a
+ * contact email that already belongs to a registered (non-guest) account. We
+ * refuse rather than silently attach the order to that account: only the account
+ * owner, signed in, may check out under their identity. (User.email is unique,
+ * so a guest_ row can't be minted for that email either.) Callers map this to a
+ * friendly "please sign in" message on the checkout surface.
+ */
+export class GuestEmailBelongsToAccountError extends Error {
+  constructor() {
+    super('GUEST_EMAIL_BELONGS_TO_ACCOUNT');
+    this.name = 'GuestEmailBelongsToAccountError';
+  }
+}
+
+/**
+ * Resolve the buyer for a guest (unauthenticated) checkout: find-or-create a
+ * guest_ user keyed by the form email. Repeat guests with the same email reuse
+ * their guest_ row. If the email belongs to a real account, refuse — see
+ * GuestEmailBelongsToAccountError.
+ */
+async function resolveGuestBuyer(db: Db, draft: OrderDraft) {
+  const existing = await db.user.findUnique({ where: { email: draft.buyer.email } });
+  if (existing) {
+    // The `guest_` clerk_id prefix is the sole discriminator between a synthetic
+    // guest row (freely mintable) and a real, sign-in-backed account. A non-guest
+    // match means this email belongs to an account — refuse rather than attach.
+    if (!existing.clerk_id.startsWith('guest_')) {
+      throw new GuestEmailBelongsToAccountError();
+    }
+    return existing;
+  }
+  return db.user.create({
+    data: {
+      clerk_id: `guest_${randomUUID()}`,
+      email: draft.buyer.email,
+      full_name: draft.buyer.name,
+      is_email_verified: false,
+      account_status: 'ACTIVE',
+    },
+  });
+}
+
+/**
  * Persist a PENDING_PAYMENT order + items + a PENDING Payment. The buyer User
  * is resolved (authenticated id, else guest upsert) outside the transaction.
  */
@@ -221,17 +264,8 @@ export async function buildPendingOrder(
       // only if that account was hard-deleted in the sub-second gap. Throwing is
       // intentional: never silently fork a signed-in buyer onto a guest_ row.
       await db.user.findUniqueOrThrow({ where: { id: opts.buyerUserId } })
-    : // Guest checkout: find-or-create a guest_ user keyed by the form email.
-      ((await db.user.findUnique({ where: { email: draft.buyer.email } })) ??
-        (await db.user.create({
-          data: {
-            clerk_id: `guest_${randomUUID()}`,
-            email: draft.buyer.email,
-            full_name: draft.buyer.name,
-            is_email_verified: false,
-            account_status: 'ACTIVE',
-          },
-        })));
+    : // Guest checkout: find-or-create a guest_ user (refuses real-account emails).
+      await resolveGuestBuyer(db, draft);
 
   const orderNumber = `VDR-${randomUUID().replace(/-/g, '').slice(0, 8).toUpperCase()}`;
 
