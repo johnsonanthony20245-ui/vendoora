@@ -6,6 +6,10 @@ import { prisma, type Prisma } from '@vendoora/db';
 import { getAdminSession } from '../../lib/admin';
 import { reviewKycApplication, type KycDecision } from '../../lib/kyc';
 import { IS_R2_ENABLED, uploadObject, deleteObject } from '../../lib/r2';
+import {
+  ALLOWED_KYC_UPLOAD_MIME,
+  assertFileBytesMatchType,
+} from '../../lib/file-magic';
 
 /** Cuid v1/v2 plus uuid — what Prisma @default(cuid()) produces. */
 const ID_RE = /^[A-Za-z0-9_-]{20,40}$/;
@@ -73,13 +77,6 @@ const KYC_DOC_TYPES = new Set([
 ] as const);
 type KycDocType = typeof KYC_DOC_TYPES extends Set<infer T> ? T : never;
 
-const ALLOWED_MIME = new Set([
-  'image/jpeg',
-  'image/png',
-  'image/webp',
-  'application/pdf',
-]);
-
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024; // 10 MB
 
 /**
@@ -112,7 +109,7 @@ export async function uploadKycDocument(formData: FormData): Promise<void> {
   if (!(file instanceof File) || file.size === 0) {
     redirect(`/admin/kyc/${applicationId}?upload_error=missing_file`);
   }
-  if (!ALLOWED_MIME.has(file.type)) {
+  if (!ALLOWED_KYC_UPLOAD_MIME.has(file.type)) {
     redirect(`/admin/kyc/${applicationId}?upload_error=bad_mime`);
   }
   if (file.size > MAX_UPLOAD_BYTES) {
@@ -152,6 +149,18 @@ export async function uploadKycDocument(formData: FormData): Promise<void> {
   const objectKey = `kyc/${applicationId}/${docType.toLowerCase()}/${randomUUID()}-${safeFileName}`;
 
   const bytes = Buffer.from(await file.arrayBuffer());
+
+  // Magic-byte sniff BEFORE the R2 PUT. file.type is browser-supplied and a
+  // tampered client can claim image/png while sending arbitrary bytes; the
+  // Content-Disposition: attachment in lib/r2 stops inline rendering but the
+  // bytes still land in the private bucket misclassified. Reject the upload
+  // outright if the real magic number doesn't match the claimed MIME or isn't
+  // on the KYC allowlist.
+  const magicResult = await assertFileBytesMatchType(bytes, file.type);
+  if (!magicResult.ok) {
+    redirect(`/admin/kyc/${applicationId}?upload_error=${magicResult.reason}`);
+  }
+
   await uploadObject({
     key: objectKey,
     body: bytes,
