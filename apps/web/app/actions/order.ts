@@ -10,6 +10,7 @@ import {
   type OrderDraft,
 } from '../../lib/order';
 import { IS_STRIPE_ENABLED, getStripe, getStripePublishableKey } from '../../lib/stripe';
+import { getCurrentBuyerUserId } from '../../lib/auth';
 
 const CART_COOKIE = 'vdr_cart';
 
@@ -60,7 +61,10 @@ export async function placeOrder(formData: FormData): Promise<void> {
   if (!assembled.ok) failValidation(assembled.error);
   const draft: OrderDraft = assembled.draft;
 
-  const pending = await buildPendingOrder(prisma, draft);
+  // Signed-in buyers are attributed by their authenticated account id, not the
+  // form email. Guests (null) fall back to email find-or-create inside build.
+  const buyerUserId = await getCurrentBuyerUserId();
+  const pending = await buildPendingOrder(prisma, draft, { buyerUserId });
   const result = await finalizePaidOrder(prisma, { orderId: pending.orderId, provider: 'wallet' });
 
   // Clear the cart on success.
@@ -100,7 +104,9 @@ export async function createCardPaymentIntent(formData: FormData): Promise<Creat
   });
   if (!assembled.ok) return { ok: false, error: assembled.error };
 
-  const pending = await buildPendingOrder(prisma, assembled.draft);
+  // Authenticated buyer is authoritative for attribution; guests resolve by email.
+  const buyerUserId = await getCurrentBuyerUserId();
+  const pending = await buildPendingOrder(prisma, assembled.draft, { buyerUserId });
 
   const stripe = getStripe();
   const intent = await stripe.paymentIntents.create({
