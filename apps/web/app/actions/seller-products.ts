@@ -2,7 +2,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { redirect } from 'next/navigation';
-import { prisma, type Prisma } from '@vendoora/db';
+import { prisma, Prisma } from '@vendoora/db';
 import { getSellerSession } from '../../lib/seller-auth';
 import { getListingUsage, type SellerPlan } from '../../lib/seller-tier';
 import { IS_R2_ENABLED, uploadObject, deleteObject } from '../../lib/r2';
@@ -145,6 +145,7 @@ export async function createProduct(formData: FormData): Promise<void> {
 
   // ---- DB writes (with best-effort R2 cleanup on failure) ----
   let createdSlug: string | null = null;
+  let slugConflict = false;
   try {
     const created = await prisma.$transaction(async (tx) => {
       const product = await tx.product.create({
@@ -202,7 +203,15 @@ export async function createProduct(formData: FormData): Promise<void> {
       return product;
     });
     createdSlug = created.slug;
-  } catch {
+  } catch (e) {
+    // A soft-deleted product can still occupy (seller_id, slug) in the unique
+    // index — @@unique([seller_id, slug]) is NOT partial — so the app-level
+    // check above (filtering `deleted_at: null`) can miss it and the write
+    // raises P2002. Map that to the clean slug_in_use message rather than the
+    // generic db_write_failed below.
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+      slugConflict = true;
+    }
     // Best-effort R2 cleanup so we don't leak orphan bytes.
     try {
       await deleteObject(objectKey);
@@ -211,6 +220,9 @@ export async function createProduct(formData: FormData): Promise<void> {
     }
   }
 
+  if (slugConflict) {
+    redirect('/sell/console/products/new?error=slug_in_use');
+  }
   if (!createdSlug) {
     redirect('/sell/console/products/new?error=db_write_failed');
   }

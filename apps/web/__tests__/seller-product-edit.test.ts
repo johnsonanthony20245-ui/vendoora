@@ -311,3 +311,55 @@ describe('updateSellerProduct — validation', () => {
     if (!result.ok) expect(result.reason).toBe('price_invalid');
   });
 });
+
+describe('updateSellerProduct — soft-deleted slug collision (P2002)', () => {
+  it('maps a unique-constraint hit on a soft-deleted sibling slug to slug_in_use, leaving the row untouched', async () => {
+    const { sellerId } = await makeSeller();
+
+    // A soft-deleted sibling still occupies (seller_id, slug) in the DB unique
+    // index — @@unique([seller_id, slug]) is NOT partial — even though the
+    // app-level uniqueness check filters `deleted_at: null` and skips it. So the
+    // edit slips past the app check and the DB write raises Prisma P2002, which
+    // must surface as a clean `slug_in_use` rather than an unhandled 500.
+    const deadSlug = `pedit-softdel-${randomUUID().slice(0, 8)}`;
+    const dead = await prisma.product.create({
+      data: {
+        seller_id: sellerId,
+        category_id: categoryId,
+        name: `Soft Deleted ${deadSlug}`,
+        slug: deadSlug,
+        description: 'A soft-deleted product whose slug still occupies the unique index.',
+        base_price: '10.00',
+        currency: 'USD',
+        attributes: {},
+        tags: [],
+        condition: 'NEW',
+        status: 'DRAFT',
+        moderation_status: 'REJECTED',
+        inventory_count: 0,
+        deleted_at: new Date(),
+      },
+      select: { id: true, slug: true },
+    });
+    createdProductIds.push(dead.id);
+
+    const { productId } = await makeProduct(sellerId, { moderationStatus: 'REJECTED' });
+    const before = await prisma.product.findUnique({ where: { id: productId } });
+
+    const result = await updateSellerProduct(prisma, {
+      sellerId,
+      productId,
+      input: validInput({ slug: deadSlug }),
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe('slug_in_use');
+
+    // The aborted transaction must leave the edited row exactly as it was — no
+    // partial write of the new name/price and no flip to PENDING.
+    const after = await prisma.product.findUnique({ where: { id: productId } });
+    expect(after?.slug).toBe(before?.slug);
+    expect(after?.name).toBe(before?.name);
+    expect(after?.moderation_status).toBe('REJECTED');
+  });
+});

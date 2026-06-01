@@ -1,4 +1,4 @@
-import { type Prisma, type PrismaClient } from '@vendoora/db';
+import { Prisma, type PrismaClient } from '@vendoora/db';
 
 /**
  * Seller "edit & resubmit" domain logic. After T&S rejects a product the seller
@@ -187,69 +187,81 @@ export async function updateSellerProduct(
   const actorClerkId = args.actorClerkId ?? null;
   const newKey = args.newPrimaryImageKey ?? null;
 
-  return db.$transaction(async (tx) => {
-    // State-guarded so a T&S decision landing between our read and this write
-    // (e.g. a reviewer approving the product) isn't clobbered by the resubmit.
-    const { count } = await tx.product.updateMany({
-      where: { id: args.productId, moderation_status: { in: [...EDITABLE_STATUSES] } },
-      data: {
-        name: v.name,
-        slug: v.slug,
-        short_description: v.short_description,
-        description: v.description,
-        category_id: v.category_id,
-        condition: v.condition,
-        base_price: v.base_price,
-        compare_at_price: v.compare_at_price,
-        moderation_status: 'PENDING',
-      },
-    });
-    if (count === 0) return { ok: false, reason: 'not_editable' };
-
-    let oldImageKey: string | null = null;
-    if (newKey) {
-      const primary = await tx.productImage.findFirst({
-        where: { product_id: args.productId, is_primary: true },
-        select: { id: true, url: true },
-        orderBy: { display_order: 'asc' },
-      });
-      if (primary) {
-        oldImageKey = primary.url;
-        await tx.productImage.update({ where: { id: primary.id }, data: { url: newKey } });
-      } else {
-        await tx.productImage.create({
-          data: { product_id: args.productId, url: newKey, is_primary: true, display_order: 0 },
-        });
-      }
-    }
-
-    await tx.auditLog.create({
-      data: {
-        ...(actorUserId
-          ? { actor_user_id: actorUserId, actor_system: false }
-          : { actor_system: actorClerkId === null }),
-        action: 'product.resubmitted',
-        resource_type: 'product',
-        resource_id: args.productId,
-        before_state: {
-          status: product.status,
-          moderation_status: product.moderation_status,
-          name: product.name,
-          slug: product.slug,
-        } satisfies Prisma.InputJsonValue,
-        after_state: {
-          status: product.status,
-          moderation_status: 'PENDING',
+  try {
+    return await db.$transaction(async (tx) => {
+      // State-guarded so a T&S decision landing between our read and this write
+      // (e.g. a reviewer approving the product) isn't clobbered by the resubmit.
+      const { count } = await tx.product.updateMany({
+        where: { id: args.productId, moderation_status: { in: [...EDITABLE_STATUSES] } },
+        data: {
           name: v.name,
           slug: v.slug,
-        } satisfies Prisma.InputJsonValue,
-        metadata: {
-          actor_clerk_id: actorClerkId,
-          image_replaced: newKey !== null,
-        } satisfies Prisma.InputJsonValue,
-      },
-    });
+          short_description: v.short_description,
+          description: v.description,
+          category_id: v.category_id,
+          condition: v.condition,
+          base_price: v.base_price,
+          compare_at_price: v.compare_at_price,
+          moderation_status: 'PENDING',
+        },
+      });
+      if (count === 0) return { ok: false, reason: 'not_editable' };
 
-    return { ok: true, productId: args.productId, slug: v.slug, oldImageKey };
-  });
+      let oldImageKey: string | null = null;
+      if (newKey) {
+        const primary = await tx.productImage.findFirst({
+          where: { product_id: args.productId, is_primary: true },
+          select: { id: true, url: true },
+          orderBy: { display_order: 'asc' },
+        });
+        if (primary) {
+          oldImageKey = primary.url;
+          await tx.productImage.update({ where: { id: primary.id }, data: { url: newKey } });
+        } else {
+          await tx.productImage.create({
+            data: { product_id: args.productId, url: newKey, is_primary: true, display_order: 0 },
+          });
+        }
+      }
+
+      await tx.auditLog.create({
+        data: {
+          ...(actorUserId
+            ? { actor_user_id: actorUserId, actor_system: false }
+            : { actor_system: actorClerkId === null }),
+          action: 'product.resubmitted',
+          resource_type: 'product',
+          resource_id: args.productId,
+          before_state: {
+            status: product.status,
+            moderation_status: product.moderation_status,
+            name: product.name,
+            slug: product.slug,
+          } satisfies Prisma.InputJsonValue,
+          after_state: {
+            status: product.status,
+            moderation_status: 'PENDING',
+            name: v.name,
+            slug: v.slug,
+          } satisfies Prisma.InputJsonValue,
+          metadata: {
+            actor_clerk_id: actorClerkId,
+            image_replaced: newKey !== null,
+          } satisfies Prisma.InputJsonValue,
+        },
+      });
+
+      return { ok: true, productId: args.productId, slug: v.slug, oldImageKey };
+    });
+  } catch (e) {
+    // A soft-deleted sibling product can still occupy (seller_id, slug) in the
+    // unique index — @@unique([seller_id, slug]) is NOT partial, so the
+    // app-level check above (which filters `deleted_at: null`) misses it and the
+    // write raises P2002. The transaction has already rolled back, so nothing
+    // was persisted; surface it as a clean slug_in_use instead of a 500.
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+      return { ok: false, reason: 'slug_in_use' };
+    }
+    throw e;
+  }
 }
