@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { cookies } from 'next/headers';
 import { prisma } from '@vendoora/db';
 import { removeCartItem, updateCartItemQuantity } from '../actions/cart';
+import { resolveProductImageUrl } from '../../lib/r2';
 
 /**
  * Cart page — mirrors docs/prototype/Vendoora_App.html `Screens.cart()`.
@@ -56,6 +57,23 @@ export default async function CartPage() {
   const rows = itemRows.filter(
     (r): r is typeof itemRows[number] & { product: NonNullable<typeof r.product> } =>
       r.product !== null,
+  );
+
+  // Resolve each row's primary image up front. `images[0].url` may be a
+  // direct https URL (seed) or an R2 object key (seller upload via
+  // createProduct, PR #25). resolveProductImageUrl passes URLs through and
+  // presigns keys for 24h. Keyed by cart_item.id so the JSX can look up by
+  // row. PR #29 wired this through home / store / PDP / search; the cart
+  // line-item thumbs were missed there and rendered raw keys until now.
+  // See lib/r2.ts.
+  const imageUrlByItem = new Map(
+    await Promise.all(
+      rows.map(async (r) => {
+        const stored = r.product.images[0]?.url;
+        const resolved = stored ? await resolveProductImageUrl(stored) : null;
+        return [r.item.id, resolved] as const;
+      }),
+    ),
   );
 
   // Empty state.
@@ -153,7 +171,7 @@ export default async function CartPage() {
                   {items.map(({ item, product }) => {
                     const price = Number(item.price_at_add);
                     const lineTotal = price * item.quantity;
-                    const img = product.images[0]?.url;
+                    const img = imageUrlByItem.get(item.id);
                     return (
                       <div key={item.id} className="cart-item">
                         <Link
