@@ -21,7 +21,7 @@ config({ path: resolve(__dirname, '../../../.env') });
 process.env.DATABASE_URL = process.env.DATABASE_URL_TEST;
 
 const { prisma } = await import('@vendoora/db');
-const { buildPendingOrder } = await import('../lib/order');
+const { buildPendingOrder, GuestEmailBelongsToAccountError } = await import('../lib/order');
 import type { OrderDraft } from '../lib/order';
 
 // A signed-in account (Clerk-synced) and a DIFFERENT email typed at checkout.
@@ -183,5 +183,39 @@ describe('buildPendingOrder — guest checkout unchanged', () => {
 
     const order = await prisma.order.findUnique({ where: { id: pending.orderId } });
     expect(order?.buyer_user_id).toBe(guest?.id);
+  });
+
+  it('reuses the same guest_ user across repeat guest checkouts with that email', async () => {
+    const first = await buildPendingOrder(prisma, makeDraft(GUEST_EMAIL));
+    const second = await buildPendingOrder(prisma, makeDraft(GUEST_EMAIL));
+
+    const guest = await prisma.user.findUnique({ where: { email: GUEST_EMAIL } });
+    const [o1, o2] = await Promise.all([
+      prisma.order.findUnique({ where: { id: first.orderId } }),
+      prisma.order.findUnique({ where: { id: second.orderId } }),
+    ]);
+    expect(o1?.buyer_user_id).toBe(guest?.id);
+    expect(o2?.buyer_user_id).toBe(guest?.id);
+    expect(o1?.buyer_user_id).toBe(o2?.buyer_user_id);
+
+    // Exactly one guest row for the email — the second checkout minted nothing new.
+    const guestCount = await prisma.user.count({ where: { email: GUEST_EMAIL } });
+    expect(guestCount).toBe(1);
+  });
+});
+
+describe('buildPendingOrder — guest cannot attach to a real account by email', () => {
+  it('rejects a guest checkout whose contact email belongs to a registered account', async () => {
+    // An unauthenticated guest typing a real account's email must not be able to
+    // fork an order onto that account. User.email is unique, so we cannot mint a
+    // guest_ row for it either — the only safe answer is to refuse and require
+    // sign-in. (The account owner, signed in, checks out via the buyerUserId path.)
+    await expect(buildPendingOrder(prisma, makeDraft(ACCOUNT_EMAIL))).rejects.toBeInstanceOf(
+      GuestEmailBelongsToAccountError,
+    );
+
+    // Nothing was attributed to the account through the guest path.
+    const orders = await prisma.order.findMany({ where: { buyer_user_id: accountUserId } });
+    expect(orders).toHaveLength(0);
   });
 });
