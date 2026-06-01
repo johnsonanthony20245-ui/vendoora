@@ -6,6 +6,7 @@ import { getSellerSession } from '../../../../../lib/seller-auth';
 import { getListingUsage, formatLimit, type SellerPlan } from '../../../../../lib/seller-tier';
 import { IS_R2_ENABLED } from '../../../../../lib/r2';
 import { createProduct } from '../../../../actions/seller-products';
+import { ImageUpload } from '../../../../../components/ImageUpload';
 
 export const dynamic = 'force-dynamic';
 
@@ -196,15 +197,7 @@ export default async function NewProductPage({ searchParams }: PageProps) {
             required
             help="JPEG / PNG / WebP, ≤ 5 MB. Will be uploaded to Cloudflare R2 and shown on the public PDP."
           >
-            <input
-              id="image"
-              name="image"
-              type="file"
-              required
-              accept="image/jpeg,image/png,image/webp"
-              className="w-full text-sm"
-              disabled={!IS_R2_ENABLED}
-            />
+            <ImageUpload name="image" required disabled={!IS_R2_ENABLED} />
           </Field>
 
           <div className="flex items-center justify-between border-t border-neutral-200 pt-5">
