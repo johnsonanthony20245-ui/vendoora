@@ -3,12 +3,16 @@
 // this file is the implementation. Discrepancies are bugs (Build_Prompt §12.1).
 
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  // citext gives users.email case-insensitive matching + uniqueness while
+  // preserving the stored display case (see User.email @db.Citext).
+  extensions = [citext]
 }
 
 // ============================================================================
@@ -20,7 +24,7 @@ datasource db {
 model User {
   id                 String            @id @default(cuid())
   clerk_id           String            @unique
-  email              String            @unique
+  email              String            @unique @db.Citext
   phone              String?           @unique
   phone_country_code String?
   full_name          String

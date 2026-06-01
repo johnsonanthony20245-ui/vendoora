@@ -12,7 +12,7 @@
  * email. The contact fields (name/email/phone) still reflect what was entered.
  * Guest checkout (no buyerUserId) is unchanged: email find-or-create a guest_.
  */
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { config } from 'dotenv';
 import { resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -27,16 +27,13 @@ import type { OrderDraft } from '../lib/order';
 // A signed-in account (Clerk-synced) and a DIFFERENT email typed at checkout.
 const ACCOUNT_CLERK_ID = 'user_authcheckout_account_test';
 const ACCOUNT_EMAIL = 'auth.checkout.account@vendoora.test';
-// Unique per test run. This is the contact email a signed-in buyer types that
-// differs from their account email. The authoritative path must never create a
-// guest_ for it. Why a fresh address each run: this suite's purge deletes orders
-// but deliberately never deletes users (audit_log rows reference actor_user_id
-// and the table is INSERT-only, so we keep the referenced users around). A guest_
-// row that a prior buggy run created therefore lingers and would poison a fixed
-// FORM_EMAIL's findUnique-by-email — a per-run address keeps the "no orphan
-// guest_" assertion hermetic against those lingering rows.
+// Unique per test run: the contact email a signed-in buyer types that differs from
+// their account email. The authoritative path must never create a guest_ for it; a
+// per-run address keeps the "no orphan guest_" assertion hermetic.
 const FORM_EMAIL = `auth.checkout.form.${randomUUID()}@vendoora.test`;
 const GUEST_EMAIL = 'auth.checkout.guest@vendoora.test';
+// Exercised in both lower- and upper-case to prove citext treats them as one identity.
+const CASE_GUEST_EMAIL = 'auth.checkout.caseguest@vendoora.test';
 
 let productId = '';
 let sellerId = '';
@@ -71,10 +68,17 @@ beforeAll(async () => {
   accountUserId = account.id;
 });
 
-async function purgeOrdersForEmails(emails: string[]): Promise<void> {
+// Reset this suite's data between tests: delete the test buyers' orders (+ payment and
+// order-item children) and any guest_ user rows for these emails. The list passes
+// explicit case-variants (e.g. FOO@ and foo@) so a leftover case-variant guest from a
+// byte-exact (pre-citext) run is cleared too — otherwise it would collide with the
+// case-insensitive citext unique index on a later migrate. The stable account row (a
+// non-guest clerk_id) is never deleted; audit_log.actor_user_id has no FK to users, so
+// removing guest rows is safe.
+async function purgeTestData(emails: string[]): Promise<void> {
   const users = await prisma.user.findMany({
     where: { email: { in: emails } },
-    select: { id: true },
+    select: { id: true, clerk_id: true },
   });
   const buyerIds = [accountUserId, ...users.map((u) => u.id)];
   const orders = await prisma.order.findMany({
@@ -86,10 +90,29 @@ async function purgeOrdersForEmails(emails: string[]): Promise<void> {
     await prisma.orderItem.deleteMany({ where: { order_id: o.id } });
     await prisma.order.delete({ where: { id: o.id } });
   }
+  const guestIds = users.filter((u) => u.clerk_id.startsWith('guest_')).map((u) => u.id);
+  if (guestIds.length > 0) {
+    await prisma.user.deleteMany({ where: { id: { in: guestIds } } });
+  }
 }
 
+const PURGE_EMAILS = [
+  ACCOUNT_EMAIL,
+  ACCOUNT_EMAIL.toUpperCase(),
+  FORM_EMAIL,
+  GUEST_EMAIL,
+  CASE_GUEST_EMAIL,
+  CASE_GUEST_EMAIL.toUpperCase(),
+];
+
 beforeEach(async () => {
-  await purgeOrdersForEmails([ACCOUNT_EMAIL, FORM_EMAIL, GUEST_EMAIL]);
+  await purgeTestData(PURGE_EMAILS);
+});
+
+// Also purge AFTER each test so a case-variant guest a byte-exact (pre-citext) run
+// created can't linger and collide with the citext unique index on a later migrate.
+afterEach(async () => {
+  await purgeTestData(PURGE_EMAILS);
 });
 
 afterAll(async () => {
@@ -217,5 +240,37 @@ describe('buildPendingOrder — guest cannot attach to a real account by email',
     // Nothing was attributed to the account through the guest path.
     const orders = await prisma.order.findMany({ where: { buyer_user_id: accountUserId } });
     expect(orders).toHaveLength(0);
+  });
+});
+
+describe('buildPendingOrder — email identity is case-insensitive (citext)', () => {
+  it('blocks a guest whose email is a case-variant of a registered account', async () => {
+    // `AUTH...@VENDOORA.TEST` must be recognised as the account `auth...@vendoora.test`:
+    // the guard fires and no order is created. (Fails on byte-exact email matching;
+    // citext makes findUnique-by-email case-insensitive and closes it.)
+    await expect(
+      buildPendingOrder(prisma, makeDraft(ACCOUNT_EMAIL.toUpperCase())),
+    ).rejects.toBeInstanceOf(GuestEmailBelongsToAccountError);
+
+    const orders = await prisma.order.findMany({ where: { buyer_user_id: accountUserId } });
+    expect(orders).toHaveLength(0);
+  });
+
+  it('treats case-variant guest emails as one identity (no duplicate rows)', async () => {
+    const first = await buildPendingOrder(prisma, makeDraft(CASE_GUEST_EMAIL));
+    const second = await buildPendingOrder(prisma, makeDraft(CASE_GUEST_EMAIL.toUpperCase()));
+
+    const [o1, o2] = await Promise.all([
+      prisma.order.findUnique({ where: { id: first.orderId } }),
+      prisma.order.findUnique({ where: { id: second.orderId } }),
+    ]);
+    // Both checkouts resolve to one guest identity, regardless of case.
+    expect(o1?.buyer_user_id).toBe(o2?.buyer_user_id);
+
+    // And only one row exists for the email across both cases — no drift.
+    const rows = await prisma.user.count({
+      where: { email: { in: [CASE_GUEST_EMAIL, CASE_GUEST_EMAIL.toUpperCase()] } },
+    });
+    expect(rows).toBe(1);
   });
 });

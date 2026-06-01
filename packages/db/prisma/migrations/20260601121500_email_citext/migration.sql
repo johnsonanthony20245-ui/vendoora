@@ -1,0 +1,5 @@
+-- CreateExtension
+CREATE EXTENSION IF NOT EXISTS "citext";
+
+-- AlterTable
+ALTER TABLE "users" ALTER COLUMN "email" SET DATA TYPE CITEXT;
