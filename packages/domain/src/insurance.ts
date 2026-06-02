@@ -19,12 +19,14 @@ const BALANCE_KEY = 'insurance_fund.balance';
 const MAX_PER_INCIDENT_KEY = 'insurance_fund.max_per_incident';
 const MAX_PER_BUYER_YEAR_KEY = 'insurance_fund.max_per_buyer_year';
 const MAX_PER_SELLER_YEAR_INCIDENTS_KEY = 'insurance_fund.max_per_seller_year_incidents';
+const REPLENISH_THRESHOLD_KEY = 'insurance_fund.replenish_threshold';
 
 /** §7.5 defaults, applied when a config key is absent. */
 const DEFAULTS = {
   maxPerIncident: 500,
   maxPerBuyerYear: 2000,
   maxPerSellerYearIncidents: 10,
+  replenishThreshold: 2000,
 } as const;
 
 const YEAR_MS = 365 * 24 * 3600 * 1000;
@@ -37,7 +39,7 @@ export type InsuranceClaimReason =
   | 'insufficient_fund';
 
 export type InsuranceClaimResult =
-  | { ok: true; payoutId: string; balanceAfter: number }
+  | { ok: true; payoutId: string; balanceAfter: number; lowBalance: boolean }
   | { ok: false; reason: InsuranceClaimReason };
 
 export interface PayInsuranceClaimArgs {
@@ -132,6 +134,9 @@ export async function payInsuranceClaimTx(
   const maxPerSellerYearIncidents = Math.round(
     await numConfig(tx, MAX_PER_SELLER_YEAR_INCIDENTS_KEY, DEFAULTS.maxPerSellerYearIncidents),
   );
+  const replenishThresholdCents = Math.round(
+    (await numConfig(tx, REPLENISH_THRESHOLD_KEY, DEFAULTS.replenishThreshold)) * 100,
+  );
 
   if (amountCents > maxPerIncidentCents) {
     return { ok: false, reason: 'over_per_incident_cap' };
@@ -162,7 +167,8 @@ export async function payInsuranceClaimTx(
     return { ok: false, reason: 'insufficient_fund' };
   }
 
-  const newBalance = (balanceCents - amountCents) / 100;
+  const newBalanceCents = balanceCents - amountCents;
+  const newBalance = newBalanceCents / 100;
   const amount = amountCents / 100;
 
   // Store the money-of-record balance as a fixed-2dp STRING, not a JSON float —
@@ -210,5 +216,29 @@ export async function payInsuranceClaimTx(
     },
   });
 
-  return { ok: true, payoutId: payout.id, balanceAfter: newBalance };
+  // §7.5 replenishment trigger: when this payout drops the fund below the
+  // threshold, raise a one-time Finance-Admin alert (audited; there's no
+  // notification surface yet). `crossedBelow` guards against re-alerting on every
+  // subsequent payout once the fund is already low.
+  const lowBalance = newBalanceCents < replenishThresholdCents;
+  const crossedBelow = balanceCents >= replenishThresholdCents && lowBalance;
+  if (crossedBelow) {
+    await tx.auditLog.create({
+      data: {
+        ...(args.actorUserId
+          ? { actor_user_id: args.actorUserId, actor_system: false }
+          : { actor_system: true }),
+        action: 'insurance.fund.low_balance',
+        resource_type: 'insurance_payout',
+        resource_id: payout.id,
+        after_state: {
+          balance_after: newBalance.toFixed(2),
+          threshold: (replenishThresholdCents / 100).toFixed(2),
+          currency,
+        } satisfies Prisma.InputJsonValue,
+      },
+    });
+  }
+
+  return { ok: true, payoutId: payout.id, balanceAfter: newBalance, lowBalance };
 }

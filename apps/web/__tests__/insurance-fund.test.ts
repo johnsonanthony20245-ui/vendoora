@@ -62,6 +62,7 @@ beforeEach(async () => {
   await setConfig(CAP_KEYS.perIncident, 500);
   await setConfig(CAP_KEYS.buyerYear, 2000);
   await setConfig(CAP_KEYS.sellerYearIncidents, 10);
+  await setConfig('insurance_fund.replenish_threshold', 2000);
   await prisma.insurancePayout.deleteMany({
     where: { OR: [{ buyer_user_id: BUYER }, { seller_user_id: SELLER }] },
   });
@@ -164,5 +165,48 @@ describe('payInsuranceClaim — concurrency', () => {
     const okCount = results.filter((r) => r.ok).length;
     expect(okCount).toBe(2);
     expect(await getBalance()).toBe(50);
+  });
+});
+
+describe('payInsuranceClaim — low-balance alert (§7.5 replenishment trigger)', () => {
+  it('flags lowBalance and writes an alert audit when a payout drops the fund below the threshold', async () => {
+    await setBalance(2050); // just above the $2,000 threshold
+    const result = await payInsuranceClaim(prisma, claimArgs({ amount: 100 })); // -> 1950
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.lowBalance).toBe(true);
+    expect(result.balanceAfter).toBe(1950);
+
+    const alert = await prisma.auditLog.findFirst({
+      where: { action: 'insurance.fund.low_balance', resource_id: result.payoutId },
+    });
+    expect(alert).not.toBeNull();
+  });
+
+  it('does not flag or alert when the fund stays above the threshold', async () => {
+    await setBalance(5000);
+    const result = await payInsuranceClaim(prisma, claimArgs({ amount: 100 })); // -> 4900
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.lowBalance).toBe(false);
+
+    const alert = await prisma.auditLog.findFirst({
+      where: { action: 'insurance.fund.low_balance', resource_id: result.payoutId },
+    });
+    expect(alert).toBeNull();
+  });
+
+  it('flags lowBalance but does not re-alert when the fund was already below the threshold', async () => {
+    await setBalance(1900); // already below the threshold before this payout
+    const result = await payInsuranceClaim(prisma, claimArgs({ amount: 100 })); // -> 1800
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.lowBalance).toBe(true);
+
+    // No NEW crossing alert — the fund was already below the threshold.
+    const alert = await prisma.auditLog.findFirst({
+      where: { action: 'insurance.fund.low_balance', resource_id: result.payoutId },
+    });
+    expect(alert).toBeNull();
   });
 });

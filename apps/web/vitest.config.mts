@@ -6,5 +6,10 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['__tests__/**/*.test.ts'],
+    // These are real-DB integration tests against one shared Postgres. Some touch
+    // singleton rows (e.g. insurance_fund.balance in platform_config), so running
+    // test files in parallel races on that shared state. Serialize files for
+    // correctness — the suite is DB-bound, so the wall-clock cost is small.
+    fileParallelism: false,
   },
 });
