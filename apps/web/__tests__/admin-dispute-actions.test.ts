@@ -119,7 +119,21 @@ async function createOpenDispute(): Promise<{ disputeNumber: string; orderId: st
   return { disputeNumber: dispute.dispute_number, orderId: order.id };
 }
 
+const FUND_KEY = 'insurance_fund.balance';
+async function setFundBalance(v: number): Promise<void> {
+  await prisma.platformConfig.upsert({
+    where: { key: FUND_KEY },
+    update: { value: v.toFixed(2) },
+    create: { key: FUND_KEY, value: v.toFixed(2), category: 'insurance' },
+  });
+}
+async function getFundBalance(): Promise<number> {
+  const row = await prisma.platformConfig.findUnique({ where: { key: FUND_KEY } });
+  return Number(row?.value ?? 0);
+}
+
 async function cleanup(orderId: string) {
+  await prisma.insurancePayout.deleteMany({ where: { order_id: orderId } });
   await prisma.disputeMessage.deleteMany({
     where: { dispute: { order_id: orderId } },
   });
@@ -216,14 +230,21 @@ describe('resolveDispute', () => {
     }
   });
 
-  it('INSURANCE_PAYOUT: escrow -> INSURANCE_PAYOUT, dispute -> RESOLVED_INSURANCE', async () => {
+  it('INSURANCE_PAYOUT: escrow -> INSURANCE_PAYOUT, dispute -> RESOLVED_INSURANCE, fund debited', async () => {
     const { disputeNumber, orderId } = await createOpenDispute();
     try {
+      await setFundBalance(1000);
+      const order0 = await prisma.order.findUnique({
+        where: { id: orderId },
+        select: { total_amount: true },
+      });
+      const claimAmount = Number(order0?.total_amount);
+
       const fd = new FormData();
       fd.set('disputeNumber', disputeNumber);
       fd.set('resolution', 'INSURANCE_PAYOUT');
-      fd.set('resolutionNotes', 'Seller insolvent; insurance fund covers buyer refund per policy.');
-      await expect(resolveDispute(fd)).rejects.toThrow(/__redirect__/);
+      fd.set('resolutionNotes', 'Lost in transit, no fault; insurance fund covers the buyer refund.');
+      await expect(resolveDispute(fd)).rejects.toThrow(/__redirect__:.*resolved=1/);
 
       const d = await prisma.dispute.findUnique({ where: { dispute_number: disputeNumber } });
       expect(d?.status).toBe('RESOLVED_INSURANCE');
@@ -233,6 +254,40 @@ describe('resolveDispute', () => {
 
       const order = await prisma.order.findUnique({ where: { id: orderId } });
       expect(order?.status).toBe('REFUNDED');
+
+      // The fund refunded the buyer: a ledger row + the balance debited by the order total.
+      const payout = await prisma.insurancePayout.findFirst({ where: { order_id: orderId } });
+      expect(payout).not.toBeNull();
+      expect(Number(payout?.amount)).toBe(claimAmount);
+      expect(payout?.buyer_user_id).toBe(testBuyerId);
+      expect(await getFundBalance()).toBe(1000 - claimAmount);
+    } finally {
+      await cleanup(orderId);
+    }
+  });
+
+  it('INSURANCE_PAYOUT aborts and rolls back when the fund cannot cover the claim', async () => {
+    const { disputeNumber, orderId } = await createOpenDispute();
+    try {
+      await setFundBalance(1); // far below the order total
+
+      const fd = new FormData();
+      fd.set('disputeNumber', disputeNumber);
+      fd.set('resolution', 'INSURANCE_PAYOUT');
+      fd.set('resolutionNotes', 'Attempted insurance payout the fund cannot currently honour.');
+      await expect(resolveDispute(fd)).rejects.toThrow(/__redirect__/);
+
+      // Error redirect, not success.
+      const last = redirectCalls[redirectCalls.length - 1] ?? '';
+      expect(last).toMatch(/error=/);
+      expect(last).not.toMatch(/resolved=1/);
+
+      // The whole resolution rolled back: holds still disputed, no payout, balance intact.
+      const holds = await prisma.escrowHold.findMany({ where: { order_id: orderId } });
+      for (const h of holds) expect(h.state).toBe('HELD_DISPUTED');
+      const payout = await prisma.insurancePayout.findFirst({ where: { order_id: orderId } });
+      expect(payout).toBeNull();
+      expect(await getFundBalance()).toBe(1);
     } finally {
       await cleanup(orderId);
     }

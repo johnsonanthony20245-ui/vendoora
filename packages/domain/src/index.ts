@@ -16,6 +16,7 @@ export {
 
 export {
   payInsuranceClaim,
+  payInsuranceClaimTx,
   type InsuranceClaimReason,
   type InsuranceClaimResult,
   type PayInsuranceClaimArgs,
