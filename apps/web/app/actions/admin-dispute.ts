@@ -2,7 +2,32 @@
 
 import { redirect } from 'next/navigation';
 import { prisma, type Prisma } from '@vendoora/db';
+import { payInsuranceClaimTx, type InsuranceClaimReason } from '@vendoora/domain';
 import { getAdminSession } from '../../lib/admin';
+
+/** Thrown inside the resolution transaction when the insurance fund can't honour
+ * a claim, so the whole resolution rolls back rather than promising a payout. */
+class InsuranceClaimError extends Error {
+  constructor(public readonly reason: InsuranceClaimReason) {
+    super(`insurance_claim_failed:${reason}`);
+    this.name = 'InsuranceClaimError';
+  }
+}
+
+function insuranceErrorMessage(reason: InsuranceClaimReason): string {
+  switch (reason) {
+    case 'insufficient_fund':
+      return 'The insurance fund cannot cover this claim right now.';
+    case 'over_per_incident_cap':
+      return 'This order exceeds the per-incident insurance limit; resolve it another way.';
+    case 'over_buyer_year_cap':
+      return 'The buyer has reached their annual insurance limit.';
+    case 'over_seller_year_limit':
+      return 'This seller has reached their annual insurance incident limit.';
+    case 'invalid_amount':
+      return 'The order amount is not valid for an insurance payout.';
+  }
+}
 
 // Resolutions an admin can pick from the queue. Each maps the dispute into
 // a terminal status + transitions the escrow holds + records an audit row.
@@ -112,7 +137,7 @@ export async function resolveDispute(formData: FormData): Promise<void> {
   };
 
   const resolvedAt = new Date();
-  await prisma.$transaction(async (tx) => {
+  const txPromise = prisma.$transaction(async (tx) => {
     // Transition every HELD_DISPUTED hold on this dispute.
     const disputedHolds = dispute.order.escrow_holds.filter(
       (h) => h.state === 'HELD_DISPUTED' && h.dispute_id === dispute.id,
@@ -149,6 +174,41 @@ export async function resolveDispute(formData: FormData): Promise<void> {
           } satisfies Prisma.InputJsonValue,
         },
       });
+    }
+
+    // Insurance resolution refunds the buyer from the platform fund (§7.5). The
+    // debit runs in THIS transaction, so if the fund can't honour it the whole
+    // resolution rolls back rather than promising a payout the fund can't pay.
+    if (resolution === 'INSURANCE_PAYOUT') {
+      const sellerIds = [
+        ...new Set(
+          disputedHolds
+            .map((h) => h.beneficiary_seller_id)
+            .filter((s): s is string => Boolean(s)),
+        ),
+      ];
+      // Attribute the per-seller incident cap only for a single-seller order, and
+      // key it on the seller's USER id — beneficiary_seller_id is a Seller.id, but
+      // the fund's seller_user_id cap is keyed on the owning user.
+      let sellerUserId: string | null = null;
+      const onlySellerId = sellerIds.length === 1 ? sellerIds[0] : undefined;
+      if (onlySellerId) {
+        const seller = await tx.seller.findUnique({
+          where: { id: onlySellerId },
+          select: { user_id: true },
+        });
+        sellerUserId = seller?.user_id ?? null;
+      }
+      const claim = await payInsuranceClaimTx(tx, {
+        orderId: dispute.order_id,
+        disputeId: dispute.id,
+        buyerUserId: dispute.order.buyer_user_id,
+        sellerUserId,
+        amount: Number(dispute.order.total_amount),
+        currency: dispute.order.currency,
+        actorUserId: admin.clerk_user_id,
+      });
+      if (!claim.ok) throw new InsuranceClaimError(claim.reason);
     }
 
     // Update the dispute.
@@ -209,6 +269,17 @@ export async function resolveDispute(formData: FormData): Promise<void> {
       },
     });
   });
+
+  try {
+    await txPromise;
+  } catch (err) {
+    // A fund shortfall / cap breach rolls back the whole resolution; surface a
+    // friendly reason to the admin instead of a 500.
+    if (err instanceof InsuranceClaimError) {
+      failValidation(disputeNumber, insuranceErrorMessage(err.reason));
+    }
+    throw err;
+  }
 
   redirect(`/admin/disputes/${disputeNumber}?resolved=1`);
 }
