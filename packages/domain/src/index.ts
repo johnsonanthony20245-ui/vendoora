@@ -13,3 +13,10 @@ export {
   type ExpiryResult,
   type ExpirySweepResult,
 } from './checkout';
+
+export {
+  payInsuranceClaim,
+  type InsuranceClaimReason,
+  type InsuranceClaimResult,
+  type PayInsuranceClaimArgs,
+} from './insurance';

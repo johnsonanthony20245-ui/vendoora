@@ -2077,3 +2077,45 @@ model ProductImage {
   @@index([product_id])
   @@map("product_images")
 }
+
+// ============================================================================
+// Platform configuration & insurance fund (Engineering_Spec §4.11, §7.5)
+// ============================================================================
+
+// Key/value platform configuration (commission rates, escrow window, dispute SLA,
+// delivery-code expiry, insurance-fund balance + caps, diaspora fee, ...).
+model PlatformConfig {
+  id                 String   @id @default(cuid())
+  key                String   @unique
+  value              Json
+  description        String?
+  category           String
+  updated_by_user_id String?
+  updated_at         DateTime @updatedAt
+  created_at         DateTime @default(now())
+
+  @@index([category])
+  @@map("platform_config")
+}
+
+// Ledger of platform-insurance-fund payouts. One row per paid claim; backs the
+// per-buyer/per-seller annual caps and the audit trail. Actor/buyer/seller/order/
+// dispute are plain indexed ids (no Prisma relations) — same pattern as audit_log.
+model InsurancePayout {
+  id                 String   @id @default(cuid())
+  order_id           String
+  dispute_id         String?
+  escrow_hold_id     String?
+  buyer_user_id      String
+  seller_user_id     String?
+  amount             Decimal  @db.Decimal(12, 2)
+  currency           String   @default("USD")
+  balance_after      Decimal  @db.Decimal(12, 2)
+  created_by_user_id String?
+  created_at         DateTime @default(now())
+
+  @@index([buyer_user_id, created_at])
+  @@index([seller_user_id, created_at])
+  @@index([order_id])
+  @@map("insurance_payouts")
+}

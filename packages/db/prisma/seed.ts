@@ -648,6 +648,33 @@ async function main() {
   }
   console.log(`  ${reviewCount} reviews across ${allProducts.length} products.`);
 
+  // Platform configuration — insurance fund (Engineering_Spec §7.5).
+  // The balance is the money-of-record: stored as a fixed-2dp STRING (no JSON
+  // float drift) and protected on re-seed (`protectOnReseed`) so an already-debited
+  // fund is never clobbered back to the seed value. Caps/threshold re-seed their
+  // value so config tweaks propagate to existing envs.
+  console.log('Seeding platform config (insurance fund)...');
+  const insuranceConfig: Array<{
+    key: string;
+    value: number | string;
+    description: string;
+    protectOnReseed?: boolean;
+  }> = [
+    { key: 'insurance_fund.balance', value: '5000.00', description: 'Insurance fund balance (USD).', protectOnReseed: true },
+    { key: 'insurance_fund.currency', value: 'USD', description: 'Insurance fund currency.' },
+    { key: 'insurance_fund.max_per_incident', value: 500, description: 'Max insurance payout per incident (USD).' },
+    { key: 'insurance_fund.max_per_buyer_year', value: 2000, description: 'Max insurance payout per buyer per year (USD).' },
+    { key: 'insurance_fund.max_per_seller_year_incidents', value: 10, description: 'Max insurance incidents per seller per year.' },
+    { key: 'insurance_fund.replenish_threshold', value: 2000, description: 'Balance below which Finance Admin is alerted (USD).' },
+  ];
+  for (const cfg of insuranceConfig) {
+    await prisma.platformConfig.upsert({
+      where: { key: cfg.key },
+      update: cfg.protectOnReseed ? {} : { value: cfg.value, description: cfg.description },
+      create: { key: cfg.key, value: cfg.value, category: 'insurance', description: cfg.description },
+    });
+  }
+
   console.log('Seed complete.');
 }
 
