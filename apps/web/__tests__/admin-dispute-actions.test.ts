@@ -48,6 +48,7 @@ let testBuyerId = '';
 beforeAll(async () => {
   const product = await prisma.product.findFirst({
     where: { status: 'PUBLISHED', moderation_status: 'APPROVED' },
+    orderBy: { base_price: 'asc' },
     include: { seller: true },
   });
   if (!product) throw new Error('No published products in test DB. Run `pnpm db:seed`.');
@@ -70,6 +71,7 @@ beforeAll(async () => {
 async function createOpenDispute(): Promise<{ disputeNumber: string; orderId: string }> {
   const product = await prisma.product.findFirst({
     where: { status: 'PUBLISHED', moderation_status: 'APPROVED' },
+    orderBy: { base_price: 'asc' },
     include: { seller: true },
   });
   if (!product) throw new Error('No product');

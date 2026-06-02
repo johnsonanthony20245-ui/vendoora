@@ -19,7 +19,7 @@ function insuranceErrorMessage(reason: InsuranceClaimReason): string {
     case 'insufficient_fund':
       return 'The insurance fund cannot cover this claim right now.';
     case 'over_per_incident_cap':
-      return 'This order exceeds the per-incident insurance limit.';
+      return 'This order exceeds the per-incident insurance limit; resolve it another way.';
     case 'over_buyer_year_cap':
       return 'The buyer has reached their annual insurance limit.';
     case 'over_seller_year_limit':
@@ -187,12 +187,22 @@ export async function resolveDispute(formData: FormData): Promise<void> {
             .filter((s): s is string => Boolean(s)),
         ),
       ];
+      // Attribute the per-seller incident cap only for a single-seller order, and
+      // key it on the seller's USER id — beneficiary_seller_id is a Seller.id, but
+      // the fund's seller_user_id cap is keyed on the owning user.
+      let sellerUserId: string | null = null;
+      if (sellerIds.length === 1) {
+        const seller = await tx.seller.findUnique({
+          where: { id: sellerIds[0]! },
+          select: { user_id: true },
+        });
+        sellerUserId = seller?.user_id ?? null;
+      }
       const claim = await payInsuranceClaimTx(tx, {
         orderId: dispute.order_id,
         disputeId: dispute.id,
         buyerUserId: dispute.order.buyer_user_id,
-        // Attribute the seller-incident cap only for a single-seller order.
-        sellerUserId: sellerIds.length === 1 ? (sellerIds[0] ?? null) : null,
+        sellerUserId,
         amount: Number(dispute.order.total_amount),
         currency: dispute.order.currency,
         actorUserId: admin.clerk_user_id,
