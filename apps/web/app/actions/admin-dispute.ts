@@ -191,9 +191,10 @@ export async function resolveDispute(formData: FormData): Promise<void> {
       // key it on the seller's USER id — beneficiary_seller_id is a Seller.id, but
       // the fund's seller_user_id cap is keyed on the owning user.
       let sellerUserId: string | null = null;
-      if (sellerIds.length === 1) {
+      const onlySellerId = sellerIds.length === 1 ? sellerIds[0] : undefined;
+      if (onlySellerId) {
         const seller = await tx.seller.findUnique({
-          where: { id: sellerIds[0]! },
+          where: { id: onlySellerId },
           select: { user_id: true },
         });
         sellerUserId = seller?.user_id ?? null;
