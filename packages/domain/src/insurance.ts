@@ -20,6 +20,8 @@ const MAX_PER_INCIDENT_KEY = 'insurance_fund.max_per_incident';
 const MAX_PER_BUYER_YEAR_KEY = 'insurance_fund.max_per_buyer_year';
 const MAX_PER_SELLER_YEAR_INCIDENTS_KEY = 'insurance_fund.max_per_seller_year_incidents';
 const REPLENISH_THRESHOLD_KEY = 'insurance_fund.replenish_threshold';
+const TOPUP_RATE_KEY = 'insurance_fund.topup_rate';
+const LAST_TOPUP_KEY = 'insurance_fund.last_topup_at';
 
 /** §7.5 defaults, applied when a config key is absent. */
 const DEFAULTS = {
@@ -27,6 +29,7 @@ const DEFAULTS = {
   maxPerBuyerYear: 2000,
   maxPerSellerYearIncidents: 10,
   replenishThreshold: 2000,
+  topupRate: 0.005,
 } as const;
 
 const YEAR_MS = 365 * 24 * 3600 * 1000;
@@ -241,4 +244,102 @@ export async function payInsuranceClaimTx(
   }
 
   return { ok: true, payoutId: payout.id, balanceAfter: newBalance, lowBalance };
+}
+
+export interface InsuranceTopUpResult {
+  /** Commission earned in the accrual window (major units). */
+  commissionTotal: number;
+  /** Amount added to the fund (topup_rate × commissionTotal). */
+  contribution: number;
+  balanceAfter: number;
+}
+
+/**
+ * Nightly insurance-fund top-up (§7.5): allocate `topup_rate` (default 0.5%) of
+ * the commission from orders paid since the previous run to the fund. Windowed by
+ * `insurance_fund.last_topup_at` so each run only counts new commission, then the
+ * marker is advanced to `now`. Batching the contribution (vs per-order) avoids
+ * serializing every order finalization on the single fund-balance row.
+ *
+ * Pass `since` to override the window start (otherwise the stored marker is used,
+ * defaulting to the epoch on the very first run). Money is reasoned in integer
+ * cents; the balance is stored as a fixed-2dp string.
+ */
+export async function accrueInsuranceTopUp(
+  db: Db,
+  args: { now?: Date; since?: Date } = {},
+): Promise<InsuranceTopUpResult> {
+  const at = args.now ?? new Date();
+
+  return db.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM platform_config WHERE key = ${BALANCE_KEY} FOR UPDATE`;
+
+    const balanceRow = await tx.platformConfig.findUnique({
+      where: { key: BALANCE_KEY },
+      select: { value: true },
+    });
+    if (balanceRow == null) {
+      throw new Error('insurance_fund.balance config row is missing; cannot top up');
+    }
+    const balance = Number(balanceRow.value);
+    if (!Number.isFinite(balance)) {
+      throw new Error(`insurance_fund.balance is not a finite number: ${JSON.stringify(balanceRow.value)}`);
+    }
+    const balanceCents = Math.round(balance * 100);
+    const rate = await numConfig(tx, TOPUP_RATE_KEY, DEFAULTS.topupRate);
+
+    let windowStart: Date;
+    if (args.since) {
+      windowStart = args.since;
+    } else {
+      const lastRow = await tx.platformConfig.findUnique({
+        where: { key: LAST_TOPUP_KEY },
+        select: { value: true },
+      });
+      windowStart = lastRow ? new Date(String(lastRow.value)) : new Date(0);
+      if (Number.isNaN(windowStart.getTime())) windowStart = new Date(0);
+    }
+
+    const agg = await tx.orderItem.aggregate({
+      where: { order: { paid_at: { gt: windowStart, lte: at } } },
+      _sum: { commission_amount: true },
+    });
+    const commissionCents = Math.round(Number(agg._sum.commission_amount ?? 0) * 100);
+    const contributionCents = Math.round(commissionCents * rate);
+    const newBalanceCents = balanceCents + contributionCents;
+    const balanceAfter = newBalanceCents / 100;
+
+    await tx.platformConfig.update({
+      where: { key: BALANCE_KEY },
+      data: { value: balanceAfter.toFixed(2) },
+    });
+    await tx.platformConfig.upsert({
+      where: { key: LAST_TOPUP_KEY },
+      update: { value: at.toISOString() },
+      create: { key: LAST_TOPUP_KEY, value: at.toISOString(), category: 'insurance' },
+    });
+
+    if (contributionCents > 0) {
+      await tx.auditLog.create({
+        data: {
+          actor_system: true,
+          action: 'insurance.fund.topup',
+          resource_type: 'insurance_fund',
+          resource_id: BALANCE_KEY,
+          after_state: {
+            commission_total: (commissionCents / 100).toFixed(2),
+            contribution: (contributionCents / 100).toFixed(2),
+            balance_after: balanceAfter.toFixed(2),
+            rate,
+          } satisfies Prisma.InputJsonValue,
+        },
+      });
+    }
+
+    return {
+      commissionTotal: commissionCents / 100,
+      contribution: contributionCents / 100,
+      balanceAfter,
+    };
+  });
 }

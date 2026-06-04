@@ -17,7 +17,9 @@ export {
 export {
   payInsuranceClaim,
   payInsuranceClaimTx,
+  accrueInsuranceTopUp,
   type InsuranceClaimReason,
   type InsuranceClaimResult,
   type PayInsuranceClaimArgs,
+  type InsuranceTopUpResult,
 } from './insurance';

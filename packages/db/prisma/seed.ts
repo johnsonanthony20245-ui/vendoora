@@ -666,6 +666,7 @@ async function main() {
     { key: 'insurance_fund.max_per_buyer_year', value: 2000, description: 'Max insurance payout per buyer per year (USD).' },
     { key: 'insurance_fund.max_per_seller_year_incidents', value: 10, description: 'Max insurance incidents per seller per year.' },
     { key: 'insurance_fund.replenish_threshold', value: 2000, description: 'Balance below which Finance Admin is alerted (USD).' },
+    { key: 'insurance_fund.topup_rate', value: 0.005, description: 'Fraction of order commission accrued to the fund (nightly top-up).' },
   ];
   for (const cfg of insuranceConfig) {
     await prisma.platformConfig.upsert({
