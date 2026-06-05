@@ -2,7 +2,11 @@ import { config } from 'dotenv';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import Stripe from 'stripe';
-import { releaseAllEligibleEscrow, expireStalePendingOrders } from '@vendoora/domain';
+import {
+  releaseAllEligibleEscrow,
+  expireStalePendingOrders,
+  accrueInsuranceTopUp,
+} from '@vendoora/domain';
 
 /**
  * Vendoora background worker.
@@ -11,12 +15,14 @@ import { releaseAllEligibleEscrow, expireStalePendingOrders } from '@vendoora/do
  *     24h post-delivery dispute window passes.
  *   - checkout expiry: abandoned PENDING_PAYMENT orders → EXPIRED (+ FAILED
  *     payment, audit, best-effort Stripe PI cancel).
+ *   - insurance-fund top-up (§7.5): accrue 0.5% of recent order commission to
+ *     the platform insurance fund, nightly.
  *
  * Scheduler is chosen at boot:
- *   - REDIS_URL set   → two BullMQ repeatable jobs (retries, dead-letter set,
+ *   - REDIS_URL set   → three BullMQ repeatable jobs (retries, dead-letter set,
  *                       cross-process locking → safe to run multiple replicas).
- *   - REDIS_URL unset → single-process poll loop driving both sweeps (run ONE
- *                       replica). Both sweeps share the escrow interval here.
+ *   - REDIS_URL unset → poll loops driving the sweeps (run ONE replica). Escrow +
+ *                       expiry share the short interval; the top-up runs daily.
  *
  * The job logic is the shared, tested @vendoora/domain code in both modes.
  */
@@ -34,6 +40,10 @@ function envInt(name: string, fallback: number): number {
 const ESCROW_INTERVAL_MS = envInt('ESCROW_RELEASE_INTERVAL_MS', 5 * 60 * 1000);
 const EXPIRY_INTERVAL_MS = envInt('CHECKOUT_EXPIRY_INTERVAL_MS', 60 * 1000);
 const EXPIRY_OLDER_THAN_MS = envInt('CHECKOUT_EXPIRY_OLDER_THAN_MS', 30 * 60 * 1000);
+// Nightly insurance-fund top-up (§7.5). The accrual is windowed in the domain
+// layer, so the interval isn't load-bearing — a missed/extra tick only changes
+// the window size, never the total accrued.
+const TOPUP_INTERVAL_MS = envInt('INSURANCE_TOPUP_INTERVAL_MS', 24 * 60 * 60 * 1000);
 
 function log(message: string, extra?: Record<string, unknown>): void {
   const line = { ts: new Date().toISOString(), worker: 'vendoora-worker', message, ...extra };
@@ -69,20 +79,29 @@ if (REDIS_URL) {
     log,
     ...(cancelStripeIntent ? { cancelStripeIntent } : {}),
   });
+  const { startInsuranceTopUpWorker } = await import('./insurance-topup-queue');
+  const topup = await startInsuranceTopUpWorker({
+    redisUrl: REDIS_URL,
+    intervalMs: TOPUP_INTERVAL_MS,
+    log,
+  });
   scheduler = {
     close: async () => {
-      await Promise.allSettled([escrow.close(), expiry.close()]);
+      await Promise.allSettled([escrow.close(), expiry.close(), topup.close()]);
     },
   };
   log('starting', {
     mode: 'bullmq',
     escrowIntervalMs: ESCROW_INTERVAL_MS,
     expiryIntervalMs: EXPIRY_INTERVAL_MS,
+    topupIntervalMs: TOPUP_INTERVAL_MS,
     stripeCancel: Boolean(cancelStripeIntent),
   });
 } else {
   const { startPollLoop } = await import('./poll-loop');
-  scheduler = startPollLoop({
+  // Escrow + expiry share the short interval; the insurance top-up runs on its
+  // own (daily) loop so it doesn't tick every few minutes.
+  const mainLoop = startPollLoop({
     intervalMs: ESCROW_INTERVAL_MS,
     log,
     sweeps: [
@@ -106,9 +125,28 @@ if (REDIS_URL) {
       },
     ],
   });
+  const topupLoop = startPollLoop({
+    intervalMs: TOPUP_INTERVAL_MS,
+    log,
+    sweeps: [
+      {
+        name: 'insurance-topup',
+        run: async () => {
+          const result = await accrueInsuranceTopUp(prisma, { now: new Date() });
+          if (result.contribution > 0) log('insurance fund topped up', { ...result });
+        },
+      },
+    ],
+  });
+  scheduler = {
+    close: async () => {
+      await Promise.allSettled([mainLoop.close(), topupLoop.close()]);
+    },
+  };
   log('starting', {
     mode: 'poll-loop',
     intervalMs: ESCROW_INTERVAL_MS,
+    topupIntervalMs: TOPUP_INTERVAL_MS,
     stripeCancel: Boolean(cancelStripeIntent),
   });
 }
