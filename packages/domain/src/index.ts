@@ -23,3 +23,5 @@ export {
   type PayInsuranceClaimArgs,
   type InsuranceTopUpResult,
 } from './insurance';
+
+export { recomputeBuyerTrustScore, type TrustScoreResult } from './trust-score';
