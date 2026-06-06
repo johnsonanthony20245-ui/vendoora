@@ -108,6 +108,12 @@ describe('recomputeBuyerTrustScore', () => {
     expect(r.score).toBe(80);
     expect(await storedScore()).toBe(80);
     expect(r.disputedOrders).toBe(0);
+
+    // The contract persists the score AND an audit row, atomically.
+    const audit = await prisma.auditLog.findFirst({
+      where: { action: 'user.trust_score.recomputed', resource_id: buyerId },
+    });
+    expect(audit).not.toBeNull();
   });
 
   it('penalizes disputes: one settled order with a dispute -> 40', async () => {
@@ -135,5 +141,25 @@ describe('recomputeBuyerTrustScore', () => {
     expect(r.score).toBe(65);
     expect(r.totalOrders).toBe(2);
     expect(r.settledOrders).toBe(1);
+  });
+
+  it('does not over-penalize a dispute on an unsettled order (no settled history -> 50)', async () => {
+    const orderId = await makeOrder('PENDING_PAYMENT'); // never settled
+    await makeDispute(orderId);
+    const r = await recomputeBuyerTrustScore(prisma, buyerId);
+    // settledOrders=0 -> payment_success_rate 0, dispute/return rates 0 -> base 50
+    expect(r.settledOrders).toBe(0);
+    expect(r.disputedOrders).toBe(1);
+    expect(r.score).toBe(50);
+  });
+
+  it('floors at 0: a refunded+disputed order amid many unpaid attempts', async () => {
+    const orderId = await makeOrder('REFUNDED');
+    await makeDispute(orderId);
+    for (let i = 0; i < 4; i++) await makeOrder('EXPIRED');
+    const r = await recomputeBuyerTrustScore(prisma, buyerId);
+    // 50 + 30*(1/5) - 40*1 - 20*1 = -4 -> clamped to 0
+    expect(r.score).toBe(0);
+    expect(await storedScore()).toBe(0);
   });
 });

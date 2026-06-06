@@ -52,10 +52,13 @@ export async function recomputeBuyerTrustScore(db: Db, userId: string): Promise<
   if (totalOrders === 0) {
     score = BASE; // no history → neutral
   } else {
-    const denom = settledOrders > 0 ? settledOrders : 1;
     const paymentSuccessRate = settledOrders / totalOrders;
-    const disputeRate = Math.min(1, disputedOrders / denom);
-    const returnRate = Math.min(1, refundedOrders / denom);
+    // Dispute/return rates are only meaningful over settled orders. With zero
+    // settled orders they contribute nothing — a dispute filed against an
+    // unsettled (PENDING/EXPIRED/CANCELLED) order must not be divided by an
+    // empty denominator and slam the score.
+    const disputeRate = settledOrders > 0 ? Math.min(1, disputedOrders / settledOrders) : 0;
+    const returnRate = settledOrders > 0 ? Math.min(1, refundedOrders / settledOrders) : 0;
     score = clamp(
       Math.round(
         BASE +
@@ -68,22 +71,25 @@ export async function recomputeBuyerTrustScore(db: Db, userId: string): Promise<
     );
   }
 
-  await db.user.update({ where: { id: userId }, data: { trust_score: score } });
-  await db.auditLog.create({
-    data: {
-      actor_system: true,
-      action: 'user.trust_score.recomputed',
-      resource_type: 'user',
-      resource_id: userId,
-      after_state: {
-        trust_score: score,
-        total_orders: totalOrders,
-        settled_orders: settledOrders,
-        disputed_orders: disputedOrders,
-        refunded_orders: refundedOrders,
-      } satisfies Prisma.InputJsonValue,
-    },
-  });
+  // Persist the score + audit row atomically (matches escrow.ts / insurance.ts).
+  await db.$transaction([
+    db.user.update({ where: { id: userId }, data: { trust_score: score } }),
+    db.auditLog.create({
+      data: {
+        actor_system: true,
+        action: 'user.trust_score.recomputed',
+        resource_type: 'user',
+        resource_id: userId,
+        after_state: {
+          trust_score: score,
+          total_orders: totalOrders,
+          settled_orders: settledOrders,
+          disputed_orders: disputedOrders,
+          refunded_orders: refundedOrders,
+        } satisfies Prisma.InputJsonValue,
+      },
+    }),
+  ]);
 
   return { userId, score, totalOrders, settledOrders, disputedOrders, refundedOrders };
 }
