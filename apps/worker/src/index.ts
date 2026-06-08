@@ -6,6 +6,7 @@ import {
   releaseAllEligibleEscrow,
   expireStalePendingOrders,
   accrueInsuranceTopUp,
+  sweepDisputeSlaBreaches,
 } from '@vendoora/domain';
 
 /**
@@ -17,12 +18,13 @@ import {
  *     payment, audit, best-effort Stripe PI cancel).
  *   - insurance-fund top-up (§7.5): accrue 0.5% of recent order commission to
  *     the platform insurance fund, nightly.
+ *   - dispute SLA sweep: flag + escalate open disputes past their sla_due_at.
  *
  * Scheduler is chosen at boot:
- *   - REDIS_URL set   → three BullMQ repeatable jobs (retries, dead-letter set,
+ *   - REDIS_URL set   → four BullMQ repeatable jobs (retries, dead-letter set,
  *                       cross-process locking → safe to run multiple replicas).
  *   - REDIS_URL unset → poll loops driving the sweeps (run ONE replica). Escrow +
- *                       expiry share the short interval; the top-up runs daily.
+ *                       expiry + SLA share the short interval; the top-up runs daily.
  *
  * The job logic is the shared, tested @vendoora/domain code in both modes.
  */
@@ -44,6 +46,8 @@ const EXPIRY_OLDER_THAN_MS = envInt('CHECKOUT_EXPIRY_OLDER_THAN_MS', 30 * 60 * 1
 // layer, so the interval isn't load-bearing — a missed/extra tick only changes
 // the window size, never the total accrued.
 const TOPUP_INTERVAL_MS = envInt('INSURANCE_TOPUP_INTERVAL_MS', 24 * 60 * 60 * 1000);
+// Dispute SLA-breach sweep: how often to scan for open disputes past their SLA.
+const SLA_SWEEP_INTERVAL_MS = envInt('DISPUTE_SLA_SWEEP_INTERVAL_MS', 5 * 60 * 1000);
 
 function log(message: string, extra?: Record<string, unknown>): void {
   const line = { ts: new Date().toISOString(), worker: 'vendoora-worker', message, ...extra };
@@ -85,9 +89,15 @@ if (REDIS_URL) {
     intervalMs: TOPUP_INTERVAL_MS,
     log,
   });
+  const { startDisputeSlaWorker } = await import('./dispute-sla-queue');
+  const sla = await startDisputeSlaWorker({
+    redisUrl: REDIS_URL,
+    intervalMs: SLA_SWEEP_INTERVAL_MS,
+    log,
+  });
   scheduler = {
     close: async () => {
-      await Promise.allSettled([escrow.close(), expiry.close(), topup.close()]);
+      await Promise.allSettled([escrow.close(), expiry.close(), topup.close(), sla.close()]);
     },
   };
   log('starting', {
@@ -95,6 +105,7 @@ if (REDIS_URL) {
     escrowIntervalMs: ESCROW_INTERVAL_MS,
     expiryIntervalMs: EXPIRY_INTERVAL_MS,
     topupIntervalMs: TOPUP_INTERVAL_MS,
+    slaSweepIntervalMs: SLA_SWEEP_INTERVAL_MS,
     stripeCancel: Boolean(cancelStripeIntent),
   });
 } else {
@@ -121,6 +132,13 @@ if (REDIS_URL) {
             ...(cancelStripeIntent ? { cancelStripeIntent } : {}),
           });
           if (result.ordersExpired > 0) log('expired stale orders', { ...result });
+        },
+      },
+      {
+        name: 'dispute-sla-sweep',
+        run: async () => {
+          const result = await sweepDisputeSlaBreaches(prisma, { now: new Date() });
+          if (result.escalated > 0) log('escalated SLA-breached disputes', { ...result });
         },
       },
     ],
