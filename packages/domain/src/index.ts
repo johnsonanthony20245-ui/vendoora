@@ -40,3 +40,11 @@ export {
   type AutoCreatedCase,
   type TrustSubject,
 } from './trust/auto-creation';
+
+export {
+  resolveTrustCase,
+  type ResolveTrustCaseArgs,
+  type ResolveTrustCaseResult,
+  type ResolveTrustCaseReason,
+  type TrustResolutionAction,
+} from './trust/resolve';
