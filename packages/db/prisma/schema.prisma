@@ -643,6 +643,9 @@ model Order {
   // (WHERE status = 'PENDING_PAYMENT' AND created_at <= cutoff ORDER BY created_at ASC).
   // Leading `status` equality + `created_at` range/sort served by one index.
   @@index([status, created_at])
+  // For the nightly trust-score recompute's active-buyer query
+  // (WHERE updated_at >= since, DISTINCT buyer_user_id) — served from the index.
+  @@index([updated_at, buyer_user_id])
   @@map("orders")
 }
 
@@ -1009,6 +1012,8 @@ model Dispute {
   @@index([assigned_to_admin_user_id])
   @@index([sla_due_at])
   @@index([initiated_at])
+  // For the nightly trust-score recompute's active-buyer query (WHERE updated_at >= since).
+  @@index([updated_at])
   @@map("disputes")
 }
 
