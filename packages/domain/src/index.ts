@@ -32,3 +32,10 @@ export {
 } from './trust-score';
 
 export { sweepDisputeSlaBreaches, type DisputeSlaSweepResult } from './dispute-sla';
+
+export {
+  runFraudScan,
+  type FraudScanResult,
+  type FraudScanArgs,
+  type AutoCreatedCase,
+} from './trust/auto-creation';
