@@ -24,6 +24,11 @@ export {
   type InsuranceTopUpResult,
 } from './insurance';
 
-export { recomputeBuyerTrustScore, type TrustScoreResult } from './trust-score';
+export {
+  recomputeBuyerTrustScore,
+  recomputeActiveBuyerTrustScores,
+  type TrustScoreResult,
+  type BatchTrustScoreResult,
+} from './trust-score';
 
 export { sweepDisputeSlaBreaches, type DisputeSlaSweepResult } from './dispute-sla';

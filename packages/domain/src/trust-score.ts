@@ -93,3 +93,44 @@ export async function recomputeBuyerTrustScore(db: Db, userId: string): Promise<
 
   return { userId, score, totalOrders, settledOrders, disputedOrders, refundedOrders };
 }
+
+export interface BatchTrustScoreResult {
+  recomputed: number;
+  userIds: string[];
+}
+
+/**
+ * Recompute trust scores for every buyer with order or dispute activity since
+ * `since`. Used by the nightly worker to keep scores fresh without touching hot
+ * paths. recomputeBuyerTrustScore is idempotent, so an overlapping window (the
+ * worker uses a margin > its interval) only re-derives the same score.
+ */
+export async function recomputeActiveBuyerTrustScores(
+  db: Db,
+  args: { since: Date },
+): Promise<BatchTrustScoreResult> {
+  const { since } = args;
+
+  const [orderBuyers, disputeOrders] = await Promise.all([
+    db.order.findMany({
+      where: { updated_at: { gte: since } },
+      select: { buyer_user_id: true },
+      distinct: ['buyer_user_id'],
+    }),
+    db.dispute.findMany({
+      where: { updated_at: { gte: since } },
+      select: { order: { select: { buyer_user_id: true } } },
+    }),
+  ]);
+
+  const ids = new Set<string>();
+  for (const o of orderBuyers) ids.add(o.buyer_user_id);
+  for (const d of disputeOrders) if (d.order) ids.add(d.order.buyer_user_id);
+
+  const userIds = [...ids];
+  for (const userId of userIds) {
+    await recomputeBuyerTrustScore(db, userId);
+  }
+
+  return { recomputed: userIds.length, userIds };
+}
