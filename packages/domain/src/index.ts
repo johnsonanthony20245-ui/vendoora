@@ -38,4 +38,5 @@ export {
   type FraudScanResult,
   type FraudScanArgs,
   type AutoCreatedCase,
+  type TrustSubject,
 } from './trust/auto-creation';
