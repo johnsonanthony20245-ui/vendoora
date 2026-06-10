@@ -96,7 +96,7 @@ async function caseCount(driverId: string): Promise<number> {
 
 async function makeKycApp(opts: {
   submittedDaysAgo: number;
-  status?: 'SUBMITTED' | 'IN_REVIEW' | 'APPROVED';
+  status?: 'SUBMITTED' | 'IN_REVIEW' | 'NEEDS_MORE_INFO' | 'APPROVED';
 }): Promise<string> {
   const u = await prisma.user.create({
     data: {
@@ -278,11 +278,36 @@ describe('runFraudScan — stale KYC applications', () => {
     expect(tc?.severity).toBe('MEDIUM'); // 10d, < 2x SLA
   });
 
+  it('also sweeps a stale IN_REVIEW application', async () => {
+    const appId = await makeKycApp({ submittedDaysAgo: 10, status: 'IN_REVIEW' });
+    const r = await runFraudScan(prisma, { now: NOW, kycStaleDays: 7 });
+    expect(r.created.some((c) => c.subjectType === 'KYC' && c.subjectId === appId)).toBe(true);
+    expect(await kycCaseFor(appId)).not.toBeNull();
+  });
+
+  it('does NOT sweep NEEDS_MORE_INFO — the ball is in the applicant\'s court', async () => {
+    const appId = await makeKycApp({ submittedDaysAgo: 20, status: 'NEEDS_MORE_INFO' });
+    const r = await runFraudScan(prisma, { now: NOW, kycStaleDays: 7 });
+    expect(r.created.some((c) => c.subjectType === 'KYC' && c.subjectId === appId)).toBe(false);
+    expect(await kycCaseFor(appId)).toBeNull();
+  });
+
   it('does not open a case for an application within its SLA', async () => {
     const appId = await makeKycApp({ submittedDaysAgo: 2, status: 'SUBMITTED' });
     const r = await runFraudScan(prisma, { now: NOW, kycStaleDays: 7 });
-    expect(r.created.some((c) => c.subjectId === appId)).toBe(false);
+    expect(r.created.some((c) => c.subjectType === 'KYC' && c.subjectId === appId)).toBe(false);
     expect(await kycCaseFor(appId)).toBeNull();
+  });
+
+  it('is idempotent — a second scan opens no duplicate KYC case', async () => {
+    const appId = await makeKycApp({ submittedDaysAgo: 10, status: 'SUBMITTED' });
+    await runFraudScan(prisma, { now: NOW, kycStaleDays: 7 });
+    const r2 = await runFraudScan(prisma, { now: NOW, kycStaleDays: 7 });
+    expect(r2.created.some((c) => c.subjectId === appId)).toBe(false);
+    const count = await prisma.trustCase.count({
+      where: { subject_type: 'KYC', subject_id: appId, auto_creation_signal: 'kyc_stale' },
+    });
+    expect(count).toBe(1);
   });
 
   it('escalates to HIGH at 2x the SLA', async () => {
@@ -294,7 +319,7 @@ describe('runFraudScan — stale KYC applications', () => {
   it('ignores already-decided applications even if old', async () => {
     const appId = await makeKycApp({ submittedDaysAgo: 30, status: 'APPROVED' });
     const r = await runFraudScan(prisma, { now: NOW, kycStaleDays: 7 });
-    expect(r.created.some((c) => c.subjectId === appId)).toBe(false);
+    expect(r.created.some((c) => c.subjectType === 'KYC' && c.subjectId === appId)).toBe(false);
     expect(await kycCaseFor(appId)).toBeNull();
   });
 });

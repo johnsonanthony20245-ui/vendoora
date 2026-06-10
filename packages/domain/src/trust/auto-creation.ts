@@ -200,6 +200,8 @@ export async function runFraudScan(db: Db, args: FraudScanArgs = {}): Promise<Fr
     select: { id: true, applicant_user_id: true, applicant_type: true, submitted_at: true },
   });
   for (const app of staleKyc) {
+    // The `where` already excludes null submitted_at; this narrows the type
+    // (Prisma's not-null filter doesn't narrow the selected field's type).
     if (app.submitted_at == null) continue;
     const ageDays = Math.floor((now.getTime() - app.submitted_at.getTime()) / DAY_MS);
     const severity: 'MEDIUM' | 'HIGH' = ageDays >= kycStaleDays * 2 ? 'HIGH' : 'MEDIUM';
