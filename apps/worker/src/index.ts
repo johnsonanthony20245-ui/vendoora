@@ -8,6 +8,7 @@ import {
   accrueInsuranceTopUp,
   sweepDisputeSlaBreaches,
   recomputeActiveBuyerTrustScores,
+  runFraudScan,
 } from '@vendoora/domain';
 import { trustRecomputeSince } from './trust-window';
 
@@ -23,13 +24,15 @@ import { trustRecomputeSince } from './trust-window';
  *   - dispute SLA sweep: flag + escalate open disputes past their sla_due_at.
  *   - buyer trust-score recompute (§5.1.12): refresh scores for recently-active
  *     buyers, nightly.
+ *   - fraud-detection scan (§5.1.11): auto-open trust cases from risk rules,
+ *     nightly.
  *
  * Scheduler is chosen at boot:
- *   - REDIS_URL set   → five BullMQ repeatable jobs (retries, dead-letter set,
+ *   - REDIS_URL set   → six BullMQ repeatable jobs (retries, dead-letter set,
  *                       cross-process locking → safe to run multiple replicas).
  *   - REDIS_URL unset → poll loops driving the sweeps (run ONE replica). Escrow +
- *                       expiry + SLA share the short interval; the top-up + trust
- *                       recompute run daily.
+ *                       expiry + SLA share the short interval; the top-up, trust
+ *                       recompute, and fraud scan run daily.
  *
  * The job logic is the shared, tested @vendoora/domain code in both modes.
  */
@@ -55,6 +58,8 @@ const TOPUP_INTERVAL_MS = envInt('INSURANCE_TOPUP_INTERVAL_MS', 24 * 60 * 60 * 1
 const SLA_SWEEP_INTERVAL_MS = envInt('DISPUTE_SLA_SWEEP_INTERVAL_MS', 5 * 60 * 1000);
 // Nightly buyer trust-score recompute (§5.1.12) over recently-active buyers.
 const TRUST_RECOMPUTE_INTERVAL_MS = envInt('TRUST_RECOMPUTE_INTERVAL_MS', 24 * 60 * 60 * 1000);
+// Nightly fraud-detection scan (§5.1.11) — auto-open trust cases from risk rules.
+const FRAUD_SCAN_INTERVAL_MS = envInt('FRAUD_SCAN_INTERVAL_MS', 24 * 60 * 60 * 1000);
 
 function log(message: string, extra?: Record<string, unknown>): void {
   const line = { ts: new Date().toISOString(), worker: 'vendoora-worker', message, ...extra };
@@ -108,6 +113,12 @@ if (REDIS_URL) {
     intervalMs: TRUST_RECOMPUTE_INTERVAL_MS,
     log,
   });
+  const { startFraudScanWorker } = await import('./fraud-scan-queue');
+  const fraud = await startFraudScanWorker({
+    redisUrl: REDIS_URL,
+    intervalMs: FRAUD_SCAN_INTERVAL_MS,
+    log,
+  });
   scheduler = {
     close: async () => {
       await Promise.allSettled([
@@ -116,6 +127,7 @@ if (REDIS_URL) {
         topup.close(),
         sla.close(),
         trust.close(),
+        fraud.close(),
       ]);
     },
   };
@@ -126,6 +138,7 @@ if (REDIS_URL) {
     topupIntervalMs: TOPUP_INTERVAL_MS,
     slaSweepIntervalMs: SLA_SWEEP_INTERVAL_MS,
     trustRecomputeIntervalMs: TRUST_RECOMPUTE_INTERVAL_MS,
+    fraudScanIntervalMs: FRAUD_SCAN_INTERVAL_MS,
     stripeCancel: Boolean(cancelStripeIntent),
   });
 } else {
@@ -181,6 +194,13 @@ if (REDIS_URL) {
           const since = trustRecomputeSince(Date.now(), TRUST_RECOMPUTE_INTERVAL_MS);
           const result = await recomputeActiveBuyerTrustScores(prisma, { since });
           if (result.recomputed > 0) log('recomputed buyer trust scores', { recomputed: result.recomputed });
+        },
+      },
+      {
+        name: 'fraud-detection-scan',
+        run: async () => {
+          const result = await runFraudScan(prisma, { now: new Date() });
+          if (result.created.length > 0) log('opened trust cases', { count: result.created.length });
         },
       },
     ],
