@@ -17,8 +17,8 @@ import { type Prisma, type PrismaClient } from '@vendoora/db';
  * auto_creation_signal) WHERE the case is open) is a tracked follow-up.
  *
  * This file is the rule registry. Each rule finds tripping subjects and calls
- * openCaseIfAbsent. Rules so far: driver delivery failures, stale KYC. More
- * (dispute pattern vs. a seller, fraud velocity) slot in the same way.
+ * openCaseIfAbsent. Rules so far: driver delivery failures, stale KYC, buyer
+ * order velocity. More (dispute pattern vs. a seller) slot in the same way.
  */
 
 type Db = PrismaClient;
@@ -37,10 +37,12 @@ const DEFAULTS = {
   windowDays: 30,
   driverFailureThreshold: 3,
   kycStaleDays: 7,
+  velocityWindowHours: 24,
+  velocityOrderThreshold: 10,
   caseSlaDays: 3,
 } as const;
 
-export type TrustSubject = 'DRIVER' | 'SELLER' | 'KYC';
+export type TrustSubject = 'DRIVER' | 'SELLER' | 'KYC' | 'USER';
 
 export interface AutoCreatedCase {
   caseId: string;
@@ -60,6 +62,8 @@ export interface FraudScanArgs {
   windowDays?: number;
   driverFailureThreshold?: number;
   kycStaleDays?: number;
+  velocityWindowHours?: number;
+  velocityOrderThreshold?: number;
 }
 
 function makeCaseNumber(now: Date): string {
@@ -219,6 +223,40 @@ export async function runFraudScan(db: Db, args: FraudScanArgs = {}): Promise<Fr
         applicant_user_id: app.applicant_user_id,
         applicant_type: app.applicant_type,
         age_days: ageDays,
+      },
+    });
+    if (c) created.push(c);
+  }
+
+  // ── Rule: a buyer placing an abnormal burst of orders (velocity) ────────────
+  // All orders count (incl. PENDING/FAILED): a rapid burst of attempts is the
+  // card-testing signal, regardless of which ones captured.
+  const velocityWindowHours = args.velocityWindowHours ?? DEFAULTS.velocityWindowHours;
+  const velocityOrderThreshold = args.velocityOrderThreshold ?? DEFAULTS.velocityOrderThreshold;
+  const velocitySince = new Date(now.getTime() - velocityWindowHours * 60 * 60 * 1000);
+  const burstBuyers = await db.order.groupBy({
+    by: ['buyer_user_id'],
+    where: { created_at: { gte: velocitySince } },
+    _count: { id: true },
+    having: { id: { _count: { gte: velocityOrderThreshold } } },
+  });
+  for (const grp of burstBuyers) {
+    const buyerId = grp.buyer_user_id;
+    const orderCount = grp._count.id;
+    const severity: 'MEDIUM' | 'HIGH' = orderCount >= velocityOrderThreshold * 2 ? 'HIGH' : 'MEDIUM';
+    const c = await openCaseIfAbsent(db, now, dueDate, {
+      subjectType: 'USER',
+      subjectId: buyerId,
+      signal: 'order_velocity_buyer',
+      severity,
+      title: `Order velocity spike — buyer ${buyerId}`,
+      summary: `${orderCount} orders in the last ${velocityWindowHours}h (threshold ${velocityOrderThreshold}).`,
+      audit: {
+        signal: 'order_velocity_buyer',
+        subject_type: 'USER',
+        subject_id: buyerId,
+        order_count: orderCount,
+        window_hours: velocityWindowHours,
       },
     });
     if (c) created.push(c);

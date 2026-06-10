@@ -1,10 +1,10 @@
 /**
  * Trust-case auto-creation engine (packages/domain/src/trust/auto-creation.ts:
  * runFraudScan). §5.1.11: risk rules scan recent activity and open a TrustCase
- * per tripping subject, idempotently. First rule: a driver with >= threshold
- * FAILED deliveries in the window.
+ * per tripping subject, idempotently. Rules covered: driver delivery failures,
+ * stale KYC applications, and buyer order velocity.
  *
- * The scan is GLOBAL, so each test asserts on its own driver's resulting case
+ * The scan is GLOBAL, so each test asserts on its own subject's resulting case
  * (via subject_id), never on a global created-count.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -25,6 +25,7 @@ let orderId = '';
 const driverIds: string[] = [];
 const userIds: string[] = [];
 const kycAppIds: string[] = [];
+const velocityBuyerIds: string[] = [];
 
 async function makeDriver(): Promise<string> {
   const u = await prisma.user.create({
@@ -129,6 +130,51 @@ async function kycCaseFor(appId: string) {
   });
 }
 
+async function makeBuyerWithOrders(opts: { count: number; hoursAgo: number }): Promise<string> {
+  const u = await prisma.user.create({
+    data: {
+      clerk_id: `vel_${randomUUID().slice(0, 12)}`,
+      email: `${TAG}-vel-${randomUUID().slice(0, 6)}@vendoora.test`,
+      full_name: 'Velocity Buyer',
+      is_email_verified: false,
+      account_status: 'ACTIVE',
+    },
+    select: { id: true },
+  });
+  userIds.push(u.id);
+  velocityBuyerIds.push(u.id);
+  const createdAt = new Date(NOW.getTime() - opts.hoursAgo * 3600 * 1000);
+  for (let i = 0; i < opts.count; i++) {
+    await prisma.order.create({
+      data: {
+        order_number: `VDR-VEL-${randomUUID().slice(0, 8).toUpperCase()}`,
+        buyer_user_id: u.id,
+        buyer_type: 'LIBERIA_DOMESTIC',
+        buyer_name: 'Vel',
+        buyer_email: `${TAG}-vel@vendoora.test`,
+        delivery_address: { street: '1' },
+        delivery_city: 'Monrovia',
+        delivery_country: 'LR',
+        delivery_zone: 'sinkor',
+        subtotal: 10,
+        total_amount: 10,
+        currency: 'USD',
+        payment_method: 'MTN_MOMO',
+        payment_status: 'PENDING',
+        status: 'PENDING_PAYMENT',
+        created_at: createdAt,
+      },
+    });
+  }
+  return u.id;
+}
+
+async function velCaseFor(buyerId: string) {
+  return prisma.trustCase.findFirst({
+    where: { subject_type: 'USER', subject_id: buyerId, auto_creation_signal: 'order_velocity_buyer' },
+  });
+}
+
 beforeAll(async () => {
   const buyer = await prisma.user.create({
     data: {
@@ -173,6 +219,10 @@ beforeEach(async () => {
     await prisma.trustCase.deleteMany({ where: { subject_type: 'KYC', subject_id: { in: kycAppIds } } });
     await prisma.kycApplication.deleteMany({ where: { id: { in: kycAppIds } } });
   }
+  if (velocityBuyerIds.length) {
+    await prisma.trustCase.deleteMany({ where: { subject_type: 'USER', subject_id: { in: velocityBuyerIds } } });
+    await prisma.order.deleteMany({ where: { buyer_user_id: { in: velocityBuyerIds } } });
+  }
 });
 
 afterAll(async () => {
@@ -180,6 +230,8 @@ afterAll(async () => {
   await prisma.trustCase.deleteMany({ where: { subject_type: 'DRIVER', subject_id: { in: driverIds } } });
   await prisma.trustCase.deleteMany({ where: { subject_type: 'KYC', subject_id: { in: kycAppIds } } });
   await prisma.kycApplication.deleteMany({ where: { id: { in: kycAppIds } } });
+  await prisma.trustCase.deleteMany({ where: { subject_type: 'USER', subject_id: { in: velocityBuyerIds } } });
+  await prisma.order.deleteMany({ where: { buyer_user_id: { in: velocityBuyerIds } } });
   await prisma.order.deleteMany({ where: { id: orderId } });
   await prisma.driver.deleteMany({ where: { id: { in: driverIds } } });
   await prisma.user.deleteMany({ where: { id: { in: userIds } } });
@@ -321,5 +373,47 @@ describe('runFraudScan — stale KYC applications', () => {
     const r = await runFraudScan(prisma, { now: NOW, kycStaleDays: 7 });
     expect(r.created.some((c) => c.subjectType === 'KYC' && c.subjectId === appId)).toBe(false);
     expect(await kycCaseFor(appId)).toBeNull();
+  });
+});
+
+describe('runFraudScan — buyer order velocity', () => {
+  it('opens a case for a buyer over the order-velocity threshold', async () => {
+    const buyerId = await makeBuyerWithOrders({ count: 5, hoursAgo: 1 });
+    const r = await runFraudScan(prisma, { now: NOW, velocityOrderThreshold: 5, velocityWindowHours: 24 });
+    expect(r.created.some((c) => c.subjectType === 'USER' && c.subjectId === buyerId)).toBe(true);
+    const tc = await velCaseFor(buyerId);
+    expect(tc?.auto_created).toBe(true);
+    expect(tc?.severity).toBe('MEDIUM'); // 5 == threshold, < 2x
+  });
+
+  it('ignores orders placed outside the velocity window', async () => {
+    const buyerId = await makeBuyerWithOrders({ count: 5, hoursAgo: 48 }); // before the 24h window
+    const r = await runFraudScan(prisma, { now: NOW, velocityOrderThreshold: 5, velocityWindowHours: 24 });
+    expect(r.created.some((c) => c.subjectId === buyerId)).toBe(false);
+    expect(await velCaseFor(buyerId)).toBeNull();
+  });
+
+  it('escalates to HIGH at 2x the threshold', async () => {
+    const buyerId = await makeBuyerWithOrders({ count: 10, hoursAgo: 1 });
+    await runFraudScan(prisma, { now: NOW, velocityOrderThreshold: 5, velocityWindowHours: 24 });
+    expect((await velCaseFor(buyerId))?.severity).toBe('HIGH');
+  });
+
+  it('does not open a case for a buyer just under the threshold', async () => {
+    const buyerId = await makeBuyerWithOrders({ count: 4, hoursAgo: 1 });
+    const r = await runFraudScan(prisma, { now: NOW, velocityOrderThreshold: 5, velocityWindowHours: 24 });
+    expect(r.created.some((c) => c.subjectId === buyerId)).toBe(false);
+    expect(await velCaseFor(buyerId)).toBeNull();
+  });
+
+  it('is idempotent — a second scan opens no duplicate velocity case', async () => {
+    const buyerId = await makeBuyerWithOrders({ count: 5, hoursAgo: 1 });
+    await runFraudScan(prisma, { now: NOW, velocityOrderThreshold: 5, velocityWindowHours: 24 });
+    const r2 = await runFraudScan(prisma, { now: NOW, velocityOrderThreshold: 5, velocityWindowHours: 24 });
+    expect(r2.created.some((c) => c.subjectId === buyerId)).toBe(false);
+    const count = await prisma.trustCase.count({
+      where: { subject_type: 'USER', subject_id: buyerId, auto_creation_signal: 'order_velocity_buyer' },
+    });
+    expect(count).toBe(1);
   });
 });
