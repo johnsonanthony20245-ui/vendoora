@@ -9,6 +9,8 @@ import { config } from 'dotenv';
 import { resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 
+type DeliveryStatusFixture = 'ARRIVED' | 'EN_ROUTE_TO_DROPOFF';
+
 config({ path: resolve(__dirname, '../../../.env') });
 process.env.DATABASE_URL = process.env.DATABASE_URL_TEST;
 
@@ -27,21 +29,28 @@ const NOW = new Date('2026-06-10T12:00:00.000Z');
 let orderId = '';
 const deliveryIds: string[] = [];
 
-function makeUploader() {
+function makeUploader(imgId = 'testimg') {
   const uploads: Array<{ key: string; contentType: string }> = [];
+  const deletes: string[] = [];
   return {
     uploads,
+    deletes,
     deps: {
       uploadObject: async (o: { key: string; body: Buffer | Uint8Array; contentType: string }) => {
         uploads.push({ key: o.key, contentType: o.contentType });
         return { key: o.key };
       },
-      randomId: () => 'testimg',
+      deleteObject: async (key: string) => {
+        deletes.push(key);
+      },
+      randomId: () => imgId,
     },
   };
 }
 
-async function makeDelivery(opts: { status?: string; proofUrl?: string } = {}): Promise<string> {
+async function makeDelivery(
+  opts: { status?: DeliveryStatusFixture; proofUrl?: string; arrivedAt?: Date } = {},
+): Promise<string> {
   const d = await prisma.delivery.create({
     data: {
       order_id: orderId,
@@ -50,7 +59,8 @@ async function makeDelivery(opts: { status?: string; proofUrl?: string } = {}): 
       dropoff_address: { street: 'Dropoff 1' },
       driver_fee: 5,
       driver_total: 5,
-      status: (opts.status ?? 'ARRIVED') as never,
+      status: opts.status ?? 'ARRIVED',
+      ...(opts.arrivedAt ? { arrived_at: opts.arrivedAt } : {}),
       ...(opts.proofUrl ? { delivery_proof_photo_url: opts.proofUrl } : {}),
     },
     select: { id: true },
@@ -192,5 +202,71 @@ describe('recordDeliveryProof', () => {
     const r = await recordDeliveryProof(prisma, { ...baseArgs(id), bytes: NOT_AN_IMAGE }, deps);
     expect(r).toEqual({ ok: false, reason: 'mime_mismatch' });
     expect(uploads).toHaveLength(0);
+  });
+
+  it('rejects a future capture timestamp via the record path, uploading nothing', async () => {
+    const id = await makeDelivery({ status: 'ARRIVED' });
+    const { uploads, deps } = makeUploader();
+    const r = await recordDeliveryProof(
+      prisma,
+      { ...baseArgs(id), takenAt: new Date(NOW.getTime() + 30 * 60_000) },
+      deps,
+    );
+    expect(r).toEqual({ ok: false, reason: 'invalid_timestamp' });
+    expect(uploads).toHaveLength(0);
+  });
+
+  it('rejects proof captured before the driver arrived', async () => {
+    const arrivedAt = new Date(NOW.getTime() - 30 * 60_000);
+    const id = await makeDelivery({ status: 'ARRIVED', arrivedAt });
+    const { uploads, deps } = makeUploader();
+    const r = await recordDeliveryProof(
+      prisma,
+      { ...baseArgs(id), takenAt: new Date(arrivedAt.getTime() - 60 * 60_000) },
+      deps,
+    );
+    expect(r).toEqual({ ok: false, reason: 'invalid_timestamp' });
+    expect(uploads).toHaveLength(0);
+  });
+
+  it('leaves the delivery unchanged when the proof is rejected', async () => {
+    const id = await makeDelivery({ status: 'ARRIVED' });
+    const { deps } = makeUploader();
+    await recordDeliveryProof(prisma, { ...baseArgs(id), contentType: 'application/pdf' }, deps);
+    const d = await prisma.delivery.findUnique({
+      where: { id },
+      select: { status: true, delivery_proof_photo_url: true },
+    });
+    expect(d?.status).toBe('ARRIVED');
+    expect(d?.delivery_proof_photo_url).toBeNull();
+  });
+
+  it('is race-safe: concurrent submits record exactly once and clean up the orphan', async () => {
+    const id = await makeDelivery({ status: 'ARRIVED' });
+    const a = makeUploader('img-a');
+    const b = makeUploader('img-b');
+    const [ra, rb] = await Promise.all([
+      recordDeliveryProof(prisma, baseArgs(id), a.deps),
+      recordDeliveryProof(prisma, baseArgs(id), b.deps),
+    ]);
+    const winner = ra.ok ? ra : rb.ok ? rb : null;
+    const loser = !ra.ok ? ra : !rb.ok ? rb : null;
+    expect(winner).not.toBeNull();
+    expect(loser).toMatchObject({ ok: false, reason: 'already_recorded' });
+
+    const auditCount = await prisma.auditLog.count({
+      where: { action: 'delivery.proof.recorded', resource_id: id },
+    });
+    expect(auditCount).toBe(1);
+
+    const d = await prisma.delivery.findUnique({
+      where: { id },
+      select: { status: true, delivery_proof_photo_url: true },
+    });
+    expect(d?.status).toBe('COMPLETED');
+    if (winner && winner.ok) expect(d?.delivery_proof_photo_url).toBe(winner.key);
+
+    // The loser deleted its orphaned upload; the winner deleted nothing.
+    expect(a.deletes.length + b.deletes.length).toBe(1);
   });
 });

@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { type Prisma, type PrismaClient } from '@vendoora/db';
-import { assertFileBytesMatchType } from './file-magic';
+import { ALLOWED_KYC_UPLOAD_MIME, assertFileBytesMatchType } from './file-magic';
 
 /**
  * Photo proof of delivery (Engineering_Spec §5.1.5). When a driver is AT the
@@ -23,7 +23,11 @@ import { assertFileBytesMatchType } from './file-magic';
 
 type Db = PrismaClient;
 
-const ALLOWED_PROOF_MIME: ReadonlySet<string> = new Set(['image/jpeg', 'image/png', 'image/webp']);
+// Derive from the KYC upload allowlist (the single source of truth in
+// file-magic.ts), minus PDF — proof must be a photo, never a document.
+const ALLOWED_PROOF_MIME: ReadonlySet<string> = new Set(
+  [...ALLOWED_KYC_UPLOAD_MIME].filter((m) => m !== 'application/pdf'),
+);
 const EXT_BY_MIME: Record<string, string> = {
   'image/jpeg': 'jpg',
   'image/png': 'png',
@@ -62,6 +66,8 @@ export interface DeliveryProofDeps {
     body: Buffer | Uint8Array;
     contentType: string;
   }) => Promise<{ key: string }>;
+  /** Best-effort cleanup of an orphaned upload when a race loses the DB guard. */
+  deleteObject?: (key: string) => Promise<void>;
   randomId?: () => string;
 }
 
@@ -100,7 +106,7 @@ export async function recordDeliveryProof(
 
   const delivery = await db.delivery.findUnique({
     where: { id: args.deliveryId },
-    select: { id: true, status: true, delivery_proof_photo_url: true },
+    select: { id: true, status: true, delivery_proof_photo_url: true, arrived_at: true },
   });
   if (delivery == null) return { ok: false, reason: 'not_found' };
   if (delivery.delivery_proof_photo_url != null) return { ok: false, reason: 'already_recorded' };
@@ -108,6 +114,14 @@ export async function recordDeliveryProof(
 
   const meta = validateProofMetadata(args, now);
   if (!meta.ok) return { ok: false, reason: meta.reason };
+
+  // Tamper-resistance: the proof can't predate the driver's arrival at the door.
+  if (
+    delivery.arrived_at != null &&
+    args.takenAt.getTime() < delivery.arrived_at.getTime() - FUTURE_SKEW_MS
+  ) {
+    return { ok: false, reason: 'invalid_timestamp' };
+  }
 
   if (!ALLOWED_PROOF_MIME.has(args.contentType)) return { ok: false, reason: 'invalid_type' };
   const magic = await assertFileBytesMatchType(args.bytes, args.contentType);
@@ -155,6 +169,15 @@ export async function recordDeliveryProof(
     return true;
   });
 
-  if (!recorded) return { ok: false, reason: 'already_recorded' };
+  if (!recorded) {
+    // Lost a double-submit race: best-effort clean up the orphan we uploaded so
+    // it doesn't linger in R2 (a lifecycle rule would otherwise have to GC it).
+    try {
+      await deps.deleteObject?.(key);
+    } catch {
+      /* orphan is harmless; swallow */
+    }
+    return { ok: false, reason: 'already_recorded' };
+  }
   return { ok: true, deliveryId: args.deliveryId, key };
 }
