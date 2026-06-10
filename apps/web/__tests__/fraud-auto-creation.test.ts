@@ -24,6 +24,7 @@ const DAY = 24 * 3600 * 1000;
 let orderId = '';
 const driverIds: string[] = [];
 const userIds: string[] = [];
+const kycAppIds: string[] = [];
 
 async function makeDriver(): Promise<string> {
   const u = await prisma.user.create({
@@ -93,6 +94,41 @@ async function caseCount(driverId: string): Promise<number> {
   return prisma.trustCase.count({ where: { subject_type: 'DRIVER', subject_id: driverId } });
 }
 
+async function makeKycApp(opts: {
+  submittedDaysAgo: number;
+  status?: 'SUBMITTED' | 'IN_REVIEW' | 'APPROVED';
+}): Promise<string> {
+  const u = await prisma.user.create({
+    data: {
+      clerk_id: `kyc_${randomUUID().slice(0, 12)}`,
+      email: `${TAG}-kyc-${randomUUID().slice(0, 6)}@vendoora.test`,
+      full_name: 'KYC Applicant',
+      is_email_verified: false,
+      account_status: 'ACTIVE',
+    },
+    select: { id: true },
+  });
+  userIds.push(u.id);
+  const app = await prisma.kycApplication.create({
+    data: {
+      applicant_user_id: u.id,
+      applicant_type: 'SELLER',
+      target_tier: 1,
+      status: opts.status ?? 'SUBMITTED',
+      submitted_at: new Date(NOW.getTime() - opts.submittedDaysAgo * DAY),
+    },
+    select: { id: true },
+  });
+  kycAppIds.push(app.id);
+  return app.id;
+}
+
+async function kycCaseFor(appId: string) {
+  return prisma.trustCase.findFirst({
+    where: { subject_type: 'KYC', subject_id: appId, auto_creation_signal: 'kyc_stale' },
+  });
+}
+
 beforeAll(async () => {
   const buyer = await prisma.user.create({
     data: {
@@ -133,11 +169,17 @@ beforeEach(async () => {
   if (driverIds.length) {
     await prisma.trustCase.deleteMany({ where: { subject_type: 'DRIVER', subject_id: { in: driverIds } } });
   }
+  if (kycAppIds.length) {
+    await prisma.trustCase.deleteMany({ where: { subject_type: 'KYC', subject_id: { in: kycAppIds } } });
+    await prisma.kycApplication.deleteMany({ where: { id: { in: kycAppIds } } });
+  }
 });
 
 afterAll(async () => {
   await prisma.delivery.deleteMany({ where: { order_id: orderId } });
   await prisma.trustCase.deleteMany({ where: { subject_type: 'DRIVER', subject_id: { in: driverIds } } });
+  await prisma.trustCase.deleteMany({ where: { subject_type: 'KYC', subject_id: { in: kycAppIds } } });
+  await prisma.kycApplication.deleteMany({ where: { id: { in: kycAppIds } } });
   await prisma.order.deleteMany({ where: { id: orderId } });
   await prisma.driver.deleteMany({ where: { id: { in: driverIds } } });
   await prisma.user.deleteMany({ where: { id: { in: userIds } } });
@@ -223,5 +265,36 @@ describe('runFraudScan — driver delivery failures', () => {
     const r = await runFraudScan(prisma, { now: NOW, driverFailureThreshold: 3 });
     expect(r.created.some((c) => c.subjectId === driverId)).toBe(true);
     expect(await caseCount(driverId)).toBe(2); // prior RESOLVED + the new one
+  });
+});
+
+describe('runFraudScan — stale KYC applications', () => {
+  it('opens a case for an application awaiting review past its SLA', async () => {
+    const appId = await makeKycApp({ submittedDaysAgo: 10, status: 'SUBMITTED' });
+    const r = await runFraudScan(prisma, { now: NOW, kycStaleDays: 7 });
+    expect(r.created.some((c) => c.subjectType === 'KYC' && c.subjectId === appId)).toBe(true);
+    const tc = await kycCaseFor(appId);
+    expect(tc?.auto_created).toBe(true);
+    expect(tc?.severity).toBe('MEDIUM'); // 10d, < 2x SLA
+  });
+
+  it('does not open a case for an application within its SLA', async () => {
+    const appId = await makeKycApp({ submittedDaysAgo: 2, status: 'SUBMITTED' });
+    const r = await runFraudScan(prisma, { now: NOW, kycStaleDays: 7 });
+    expect(r.created.some((c) => c.subjectId === appId)).toBe(false);
+    expect(await kycCaseFor(appId)).toBeNull();
+  });
+
+  it('escalates to HIGH at 2x the SLA', async () => {
+    const appId = await makeKycApp({ submittedDaysAgo: 15, status: 'SUBMITTED' });
+    await runFraudScan(prisma, { now: NOW, kycStaleDays: 7 });
+    expect((await kycCaseFor(appId))?.severity).toBe('HIGH');
+  });
+
+  it('ignores already-decided applications even if old', async () => {
+    const appId = await makeKycApp({ submittedDaysAgo: 30, status: 'APPROVED' });
+    const r = await runFraudScan(prisma, { now: NOW, kycStaleDays: 7 });
+    expect(r.created.some((c) => c.subjectId === appId)).toBe(false);
+    expect(await kycCaseFor(appId)).toBeNull();
   });
 });
