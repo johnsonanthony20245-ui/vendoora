@@ -7,6 +7,7 @@ import {
   expireStalePendingOrders,
   accrueInsuranceTopUp,
   sweepDisputeSlaBreaches,
+  recomputeActiveBuyerTrustScores,
 } from '@vendoora/domain';
 
 /**
@@ -19,12 +20,15 @@ import {
  *   - insurance-fund top-up (§7.5): accrue 0.5% of recent order commission to
  *     the platform insurance fund, nightly.
  *   - dispute SLA sweep: flag + escalate open disputes past their sla_due_at.
+ *   - buyer trust-score recompute (§5.1.12): refresh scores for recently-active
+ *     buyers, nightly.
  *
  * Scheduler is chosen at boot:
- *   - REDIS_URL set   → four BullMQ repeatable jobs (retries, dead-letter set,
+ *   - REDIS_URL set   → five BullMQ repeatable jobs (retries, dead-letter set,
  *                       cross-process locking → safe to run multiple replicas).
  *   - REDIS_URL unset → poll loops driving the sweeps (run ONE replica). Escrow +
- *                       expiry + SLA share the short interval; the top-up runs daily.
+ *                       expiry + SLA share the short interval; the top-up + trust
+ *                       recompute run daily.
  *
  * The job logic is the shared, tested @vendoora/domain code in both modes.
  */
@@ -48,6 +52,9 @@ const EXPIRY_OLDER_THAN_MS = envInt('CHECKOUT_EXPIRY_OLDER_THAN_MS', 30 * 60 * 1
 const TOPUP_INTERVAL_MS = envInt('INSURANCE_TOPUP_INTERVAL_MS', 24 * 60 * 60 * 1000);
 // Dispute SLA-breach sweep: how often to scan for open disputes past their SLA.
 const SLA_SWEEP_INTERVAL_MS = envInt('DISPUTE_SLA_SWEEP_INTERVAL_MS', 5 * 60 * 1000);
+// Nightly buyer trust-score recompute (§5.1.12) over recently-active buyers.
+const TRUST_RECOMPUTE_INTERVAL_MS = envInt('TRUST_RECOMPUTE_INTERVAL_MS', 24 * 60 * 60 * 1000);
+const TRUST_RECOMPUTE_MARGIN_MS = 60 * 60 * 1000;
 
 function log(message: string, extra?: Record<string, unknown>): void {
   const line = { ts: new Date().toISOString(), worker: 'vendoora-worker', message, ...extra };
@@ -95,9 +102,21 @@ if (REDIS_URL) {
     intervalMs: SLA_SWEEP_INTERVAL_MS,
     log,
   });
+  const { startTrustScoreWorker } = await import('./trust-score-queue');
+  const trust = await startTrustScoreWorker({
+    redisUrl: REDIS_URL,
+    intervalMs: TRUST_RECOMPUTE_INTERVAL_MS,
+    log,
+  });
   scheduler = {
     close: async () => {
-      await Promise.allSettled([escrow.close(), expiry.close(), topup.close(), sla.close()]);
+      await Promise.allSettled([
+        escrow.close(),
+        expiry.close(),
+        topup.close(),
+        sla.close(),
+        trust.close(),
+      ]);
     },
   };
   log('starting', {
@@ -106,6 +125,7 @@ if (REDIS_URL) {
     expiryIntervalMs: EXPIRY_INTERVAL_MS,
     topupIntervalMs: TOPUP_INTERVAL_MS,
     slaSweepIntervalMs: SLA_SWEEP_INTERVAL_MS,
+    trustRecomputeIntervalMs: TRUST_RECOMPUTE_INTERVAL_MS,
     stripeCancel: Boolean(cancelStripeIntent),
   });
 } else {
@@ -143,7 +163,8 @@ if (REDIS_URL) {
       },
     ],
   });
-  const topupLoop = startPollLoop({
+  // Daily loop: insurance top-up + buyer trust-score recompute.
+  const dailyLoop = startPollLoop({
     intervalMs: TOPUP_INTERVAL_MS,
     log,
     sweeps: [
@@ -154,17 +175,26 @@ if (REDIS_URL) {
           if (result.contribution > 0) log('insurance fund topped up', { ...result });
         },
       },
+      {
+        name: 'trust-score-recompute',
+        run: async () => {
+          const since = new Date(Date.now() - TRUST_RECOMPUTE_INTERVAL_MS - TRUST_RECOMPUTE_MARGIN_MS);
+          const result = await recomputeActiveBuyerTrustScores(prisma, { since });
+          if (result.recomputed > 0) log('recomputed buyer trust scores', { recomputed: result.recomputed });
+        },
+      },
     ],
   });
   scheduler = {
     close: async () => {
-      await Promise.allSettled([mainLoop.close(), topupLoop.close()]);
+      await Promise.allSettled([mainLoop.close(), dailyLoop.close()]);
     },
   };
   log('starting', {
     mode: 'poll-loop',
     intervalMs: ESCROW_INTERVAL_MS,
     topupIntervalMs: TOPUP_INTERVAL_MS,
+    trustRecomputeIntervalMs: TRUST_RECOMPUTE_INTERVAL_MS,
     stripeCancel: Boolean(cancelStripeIntent),
   });
 }
