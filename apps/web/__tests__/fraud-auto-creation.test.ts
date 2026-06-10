@@ -72,6 +72,27 @@ async function caseFor(driverId: string) {
   });
 }
 
+async function makePriorCase(driverId: string, status: 'MONITORING' | 'RESOLVED'): Promise<void> {
+  await prisma.trustCase.create({
+    data: {
+      case_number: `TC-PRIOR-${randomUUID().slice(0, 8).toUpperCase()}`,
+      subject_type: 'DRIVER',
+      subject_id: driverId,
+      title: 'prior case',
+      summary: 'prior case',
+      status,
+      severity: 'MEDIUM',
+      due_date: new Date(NOW.getTime() + 3 * DAY),
+      auto_created: true,
+      auto_creation_signal: 'delivery_failure_driver',
+    },
+  });
+}
+
+async function caseCount(driverId: string): Promise<number> {
+  return prisma.trustCase.count({ where: { subject_type: 'DRIVER', subject_id: driverId } });
+}
+
 beforeAll(async () => {
   const buyer = await prisma.user.create({
     data: {
@@ -176,5 +197,31 @@ describe('runFraudScan — driver delivery failures', () => {
       where: { subject_type: 'DRIVER', subject_id: driverId, auto_creation_signal: 'delivery_failure_driver' },
     });
     expect(count).toBe(1);
+  });
+
+  it('does not count non-FAILED deliveries toward the threshold', async () => {
+    const driverId = await makeDriver();
+    for (let i = 0; i < 3; i++) await makeFailedDelivery(driverId, { status: 'COMPLETED' });
+    const r = await runFraudScan(prisma, { now: NOW, driverFailureThreshold: 3 });
+    expect(r.created.some((c) => c.subjectId === driverId)).toBe(false);
+    expect(await caseFor(driverId)).toBeNull();
+  });
+
+  it('suppresses a new case while an open case (MONITORING) exists', async () => {
+    const driverId = await makeDriver();
+    await makePriorCase(driverId, 'MONITORING');
+    for (let i = 0; i < 3; i++) await makeFailedDelivery(driverId);
+    const r = await runFraudScan(prisma, { now: NOW, driverFailureThreshold: 3 });
+    expect(r.created.some((c) => c.subjectId === driverId)).toBe(false);
+    expect(await caseCount(driverId)).toBe(1); // still just the prior one
+  });
+
+  it('reopens a case after a RESOLVED one when failures recur', async () => {
+    const driverId = await makeDriver();
+    await makePriorCase(driverId, 'RESOLVED');
+    for (let i = 0; i < 3; i++) await makeFailedDelivery(driverId);
+    const r = await runFraudScan(prisma, { now: NOW, driverFailureThreshold: 3 });
+    expect(r.created.some((c) => c.subjectId === driverId)).toBe(true);
+    expect(await caseCount(driverId)).toBe(2); // prior RESOLVED + the new one
   });
 });
