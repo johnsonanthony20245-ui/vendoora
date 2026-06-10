@@ -1,10 +1,10 @@
 /**
  * Trust-case auto-creation engine (packages/domain/src/trust/auto-creation.ts:
  * runFraudScan). §5.1.11: risk rules scan recent activity and open a TrustCase
- * per tripping subject, idempotently. First rule: a driver with >= threshold
- * FAILED deliveries in the window.
+ * per tripping subject, idempotently. Rules covered: driver delivery failures,
+ * stale KYC applications, and buyer order velocity.
  *
- * The scan is GLOBAL, so each test asserts on its own driver's resulting case
+ * The scan is GLOBAL, so each test asserts on its own subject's resulting case
  * (via subject_id), never on a global created-count.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -397,5 +397,23 @@ describe('runFraudScan — buyer order velocity', () => {
     const buyerId = await makeBuyerWithOrders({ count: 10, hoursAgo: 1 });
     await runFraudScan(prisma, { now: NOW, velocityOrderThreshold: 5, velocityWindowHours: 24 });
     expect((await velCaseFor(buyerId))?.severity).toBe('HIGH');
+  });
+
+  it('does not open a case for a buyer just under the threshold', async () => {
+    const buyerId = await makeBuyerWithOrders({ count: 4, hoursAgo: 1 });
+    const r = await runFraudScan(prisma, { now: NOW, velocityOrderThreshold: 5, velocityWindowHours: 24 });
+    expect(r.created.some((c) => c.subjectId === buyerId)).toBe(false);
+    expect(await velCaseFor(buyerId)).toBeNull();
+  });
+
+  it('is idempotent — a second scan opens no duplicate velocity case', async () => {
+    const buyerId = await makeBuyerWithOrders({ count: 5, hoursAgo: 1 });
+    await runFraudScan(prisma, { now: NOW, velocityOrderThreshold: 5, velocityWindowHours: 24 });
+    const r2 = await runFraudScan(prisma, { now: NOW, velocityOrderThreshold: 5, velocityWindowHours: 24 });
+    expect(r2.created.some((c) => c.subjectId === buyerId)).toBe(false);
+    const count = await prisma.trustCase.count({
+      where: { subject_type: 'USER', subject_id: buyerId, auto_creation_signal: 'order_velocity_buyer' },
+    });
+    expect(count).toBe(1);
   });
 });
