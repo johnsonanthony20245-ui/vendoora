@@ -9,6 +9,7 @@ import {
   sweepDisputeSlaBreaches,
   recomputeActiveBuyerTrustScores,
 } from '@vendoora/domain';
+import { trustRecomputeSince } from './trust-window';
 
 /**
  * Vendoora background worker.
@@ -54,7 +55,6 @@ const TOPUP_INTERVAL_MS = envInt('INSURANCE_TOPUP_INTERVAL_MS', 24 * 60 * 60 * 1
 const SLA_SWEEP_INTERVAL_MS = envInt('DISPUTE_SLA_SWEEP_INTERVAL_MS', 5 * 60 * 1000);
 // Nightly buyer trust-score recompute (§5.1.12) over recently-active buyers.
 const TRUST_RECOMPUTE_INTERVAL_MS = envInt('TRUST_RECOMPUTE_INTERVAL_MS', 24 * 60 * 60 * 1000);
-const TRUST_RECOMPUTE_MARGIN_MS = 60 * 60 * 1000;
 
 function log(message: string, extra?: Record<string, unknown>): void {
   const line = { ts: new Date().toISOString(), worker: 'vendoora-worker', message, ...extra };
@@ -178,7 +178,7 @@ if (REDIS_URL) {
       {
         name: 'trust-score-recompute',
         run: async () => {
-          const since = new Date(Date.now() - TRUST_RECOMPUTE_INTERVAL_MS - TRUST_RECOMPUTE_MARGIN_MS);
+          const since = trustRecomputeSince(Date.now(), TRUST_RECOMPUTE_INTERVAL_MS);
           const result = await recomputeActiveBuyerTrustScores(prisma, { since });
           if (result.recomputed > 0) log('recomputed buyer trust scores', { recomputed: result.recomputed });
         },
