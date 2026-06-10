@@ -127,12 +127,26 @@ describe('sweepDisputeSlaBreaches', () => {
     expect(d?.status).toBe('RESOLVED_FAVOR_BUYER');
   });
 
-  it('is idempotent — a second sweep does not re-escalate', async () => {
+  it('escalates the rest of the active set (PENDING_BUYER past SLA)', async () => {
+    const id = await makeDispute({ slaOffsetMs: -1 * HOUR, status: 'PENDING_BUYER' });
+    const result = await sweepDisputeSlaBreaches(prisma, { now: NOW });
+    expect(result.disputeIds).toContain(id);
+    const d = await getDispute(id);
+    expect(d?.status).toBe('ESCALATED');
+    expect(d?.sla_breached).toBe(true);
+  });
+
+  it('is idempotent — a second sweep neither re-escalates nor double-audits', async () => {
     const id = await makeDispute({ slaOffsetMs: -1 * HOUR });
     const first = await sweepDisputeSlaBreaches(prisma, { now: NOW });
     expect(first.disputeIds).toContain(id);
     const second = await sweepDisputeSlaBreaches(prisma, { now: NOW });
     expect(second.disputeIds).not.toContain(id);
+    // Exactly one escalation audit row — the state-guarded update writes none on re-run.
+    const auditCount = await prisma.auditLog.count({
+      where: { action: 'dispute.sla.escalated', resource_id: id },
+    });
+    expect(auditCount).toBe(1);
   });
 
   it('writes a dispute.sla.escalated audit row', async () => {

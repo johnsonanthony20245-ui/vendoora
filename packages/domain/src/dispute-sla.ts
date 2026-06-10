@@ -34,18 +34,22 @@ export async function sweepDisputeSlaBreaches(
       sla_breached: false,
       sla_due_at: { lt: now },
     },
-    select: { id: true, status: true },
+    select: { id: true, status: true, order_id: true },
   });
 
   const disputeIds: string[] = [];
   for (const d of breached) {
-    // Flag + escalate + audit atomically, per dispute (each is independent).
-    await db.$transaction([
-      db.dispute.update({
-        where: { id: d.id },
+    // State-guarded update inside an interactive transaction (mirrors escrow.ts):
+    // the `sla_breached: false` re-check makes the escalation idempotent even if a
+    // concurrent replica's boot sweep raced us to the same dispute — the loser's
+    // updateMany matches 0 rows and writes no duplicate audit.
+    const escalated = await db.$transaction(async (tx) => {
+      const { count } = await tx.dispute.updateMany({
+        where: { id: d.id, sla_breached: false },
         data: { sla_breached: true, escalated_at: now, status: 'ESCALATED' },
-      }),
-      db.auditLog.create({
+      });
+      if (count === 0) return false;
+      await tx.auditLog.create({
         data: {
           actor_system: true,
           action: 'dispute.sla.escalated',
@@ -57,10 +61,12 @@ export async function sweepDisputeSlaBreaches(
             sla_breached: true,
             escalated_at: now.toISOString(),
           } satisfies Prisma.InputJsonValue,
+          metadata: { reason: 'sla_breach', order_id: d.order_id } satisfies Prisma.InputJsonValue,
         },
-      }),
-    ]);
-    disputeIds.push(d.id);
+      });
+      return true;
+    });
+    if (escalated) disputeIds.push(d.id);
   }
 
   return { escalated: disputeIds.length, disputeIds };
