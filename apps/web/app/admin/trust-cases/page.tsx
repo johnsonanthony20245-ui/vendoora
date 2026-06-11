@@ -100,7 +100,12 @@ export default async function AdminTrustCasesPage({ searchParams }: PageProps) {
                   return (
                     <tr key={c.id} className={overdue ? 'bg-red-50' : ''}>
                       <td className="px-4 py-3">
-                        <span className="font-mono font-bold text-neutral-800">{c.case_number}</span>
+                        <Link
+                          href={`/admin/trust-cases/${encodeURIComponent(c.case_number)}`}
+                          className="font-mono font-bold text-blue-700 hover:underline"
+                        >
+                          {c.case_number}
+                        </Link>
                         <span className="mt-0.5 block max-w-xs truncate text-xs text-neutral-500">
                           {c.title}
                         </span>
