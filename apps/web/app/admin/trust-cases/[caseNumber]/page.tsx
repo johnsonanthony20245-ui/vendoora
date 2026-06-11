@@ -3,7 +3,7 @@ import { redirect } from 'next/navigation';
 import { prisma } from '@vendoora/db';
 import { BRAND_NAME } from '@vendoora/types';
 import { getAdminSession } from '../../../../lib/admin';
-import { resolveTrustCaseAction } from '../../../actions/trust-case';
+import { resolveTrustCaseAction, addTrustCaseNoteAction } from '../../../actions/trust-case';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,11 +30,14 @@ const ERROR_COPY: Record<string, string> = {
   empty_summary: 'A resolution summary is required.',
   not_found: 'Case not found.',
   already_resolved: 'This case was already resolved.',
+  short_note: 'A note needs at least 3 characters.',
+  empty_body: 'A note needs at least 3 characters.',
+  note_requires_user: 'Notes require a Clerk admin linked to a user profile (not available in dev sessions).',
 };
 
 interface PageProps {
   params: Promise<{ caseNumber: string }>;
-  searchParams: Promise<{ error?: string; resolved?: string }>;
+  searchParams: Promise<{ error?: string; resolved?: string; noted?: string }>;
 }
 
 export default async function TrustCaseDetailPage({ params, searchParams }: PageProps) {
@@ -64,6 +67,18 @@ export default async function TrustCaseDetailPage({ params, searchParams }: Page
   const isOpen = OPEN_STATUSES.includes(tc.status);
   const errorMsg = sp.error ? (ERROR_COPY[sp.error] ?? 'Something went wrong.') : null;
 
+  const notes = await prisma.trustCaseNote.findMany({
+    where: { trust_case_id: tc.id },
+    orderBy: { created_at: 'asc' },
+    select: {
+      id: true,
+      body: true,
+      visibility: true,
+      created_at: true,
+      author: { select: { full_name: true } },
+    },
+  });
+
   return (
     <main className="bg-neutral-50 min-h-screen px-6 py-10">
       <div className="mx-auto max-w-3xl">
@@ -77,6 +92,11 @@ export default async function TrustCaseDetailPage({ params, searchParams }: Page
         {sp.resolved && (
           <div className="mt-6 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">
             Case resolved.
+          </div>
+        )}
+        {sp.noted && (
+          <div className="mt-6 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">
+            Note added.
           </div>
         )}
         {errorMsg && (
@@ -100,6 +120,67 @@ export default async function TrustCaseDetailPage({ params, searchParams }: Page
             <Field label="Summary">{tc.summary}</Field>
           </div>
         </dl>
+
+        <section className="mt-8 rounded-xl border border-neutral-200 bg-neutral-0 p-6">
+          <h2 className="text-lg font-bold text-neutral-900">Investigation notes</h2>
+
+          {notes.length === 0 ? (
+            <p className="mt-3 text-sm text-neutral-500">No notes yet.</p>
+          ) : (
+            <ul className="mt-4 space-y-3">
+              {notes.map((n) => (
+                <li key={n.id} className="rounded-lg border border-neutral-200 bg-neutral-50 p-3">
+                  <div className="flex items-center gap-2 text-xs text-neutral-500">
+                    <span className="font-semibold text-neutral-700">
+                      {n.author.full_name ?? 'Admin'}
+                    </span>
+                    <span>· {n.created_at.toISOString().slice(0, 16).replace('T', ' ')}</span>
+                    {n.visibility === 'SHARED_WITH_SUBJECT' && (
+                      <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-blue-700 ring-1 ring-inset ring-blue-200">
+                        Shared
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-1 whitespace-pre-wrap text-sm text-neutral-800">{n.body}</p>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <form action={addTrustCaseNoteAction} className="mt-5 border-t border-neutral-200 pt-5">
+            <input type="hidden" name="caseId" value={tc.id} />
+            <input type="hidden" name="caseNumber" value={tc.case_number} />
+            <label htmlFor="noteBody" className="sr-only">
+              Add a note
+            </label>
+            <textarea
+              id="noteBody"
+              name="noteBody"
+              required
+              minLength={3}
+              rows={3}
+              placeholder="Add an investigation note…"
+              className="w-full rounded-lg border border-neutral-300 bg-neutral-0 px-3 py-2 text-sm"
+            />
+            <div className="mt-3 flex items-center gap-3">
+              <select
+                name="visibility"
+                defaultValue="INTERNAL"
+                aria-label="Note visibility"
+                className="rounded-lg border border-neutral-300 bg-neutral-0 px-3 py-2 text-sm"
+              >
+                <option value="INTERNAL">Internal</option>
+                <option value="SHARED_WITH_SUBJECT">Shared with subject</option>
+              </select>
+              <button
+                type="submit"
+                className="rounded-lg border border-neutral-300 bg-neutral-0 px-4 py-2 text-sm font-semibold text-neutral-900 hover:bg-neutral-100"
+              >
+                Add note
+              </button>
+            </div>
+          </form>
+        </section>
 
         {isOpen ? (
           <form

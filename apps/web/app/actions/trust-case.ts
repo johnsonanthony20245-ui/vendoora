@@ -3,7 +3,11 @@
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { prisma } from '@vendoora/db';
-import { resolveTrustCase, type TrustResolutionAction } from '@vendoora/domain';
+import {
+  resolveTrustCase,
+  addTrustCaseNote,
+  type TrustResolutionAction,
+} from '@vendoora/domain';
 import { getAdminSession } from '../../lib/admin';
 
 const RESOLUTIONS: TrustResolutionAction[] = [
@@ -49,4 +53,47 @@ export async function resolveTrustCaseAction(formData: FormData): Promise<void> 
   revalidatePath('/admin/trust-cases');
   revalidatePath(back);
   redirect(`${back}?resolved=1`);
+}
+
+/**
+ * Add an investigation note. The note's author_user_id is a real User FK, so the
+ * acting admin's Clerk id is resolved to a User row; a dev session (no Clerk id)
+ * or an unlinked admin can't author notes — surfaced as ?error=note_requires_user.
+ */
+export async function addTrustCaseNoteAction(formData: FormData): Promise<void> {
+  const admin = await getAdminSession();
+  if (!admin) redirect('/admin?error=not_authorized');
+
+  const caseNumber = String(formData.get('caseNumber') ?? '').trim();
+  const caseId = String(formData.get('caseId') ?? '').trim();
+  const back = caseNumber
+    ? `/admin/trust-cases/${encodeURIComponent(caseNumber)}`
+    : '/admin/trust-cases';
+  if (!caseId) redirect(`${back}?error=missing_case`);
+
+  const body = String(formData.get('noteBody') ?? '').trim();
+  if (body.length < 3) redirect(`${back}?error=short_note`);
+
+  const visibility =
+    String(formData.get('visibility') ?? '') === 'SHARED_WITH_SUBJECT'
+      ? 'SHARED_WITH_SUBJECT'
+      : 'INTERNAL';
+
+  if (!admin.clerk_user_id) redirect(`${back}?error=note_requires_user`);
+  const author = await prisma.user.findUnique({
+    where: { clerk_id: admin.clerk_user_id },
+    select: { id: true },
+  });
+  if (!author) redirect(`${back}?error=note_requires_user`);
+
+  const result = await addTrustCaseNote(prisma, {
+    caseId,
+    authorUserId: author.id,
+    body,
+    visibility,
+  });
+  if (!result.ok) redirect(`${back}?error=${result.reason}`);
+
+  revalidatePath(back);
+  redirect(`${back}?noted=1`);
 }
