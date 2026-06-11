@@ -48,3 +48,11 @@ export {
   type ResolveTrustCaseReason,
   type TrustResolutionAction,
 } from './trust/resolve';
+
+export {
+  addTrustCaseNote,
+  type AddTrustCaseNoteArgs,
+  type AddTrustCaseNoteResult,
+  type AddTrustCaseNoteReason,
+  type NoteVisibility,
+} from './trust/notes';
