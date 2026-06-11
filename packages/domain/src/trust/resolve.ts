@@ -24,7 +24,22 @@ export type TrustResolutionAction =
 
 const CLOSED_STATUSES = ['RESOLVED', 'HEALTHY'] as const;
 
-export type ResolveTrustCaseReason = 'not_found' | 'already_resolved' | 'empty_summary';
+/** Valid TrustResolution values — for the runtime guard (untyped route callers). */
+const RESOLUTION_ACTIONS: readonly TrustResolutionAction[] = [
+  'NO_ACTION_TAKEN',
+  'WARNING_ISSUED',
+  'SUSPENDED_TEMPORARY',
+  'SUSPENDED_PERMANENT',
+  'REFUND_ISSUED',
+  'INSURANCE_PAYOUT',
+  'RESTORED',
+];
+
+export type ResolveTrustCaseReason =
+  | 'not_found'
+  | 'already_resolved'
+  | 'empty_summary'
+  | 'invalid_resolution';
 
 export type ResolveTrustCaseResult =
   | { ok: true; caseId: string }
@@ -45,6 +60,10 @@ export async function resolveTrustCase(
   const now = args.now ?? new Date();
   const summary = args.summary.trim();
   if (summary.length === 0) return { ok: false, reason: 'empty_summary' };
+  // Defensive: a future admin route may pass a raw string from the request body.
+  if (!RESOLUTION_ACTIONS.includes(args.resolution)) {
+    return { ok: false, reason: 'invalid_resolution' };
+  }
 
   const tc = await db.trustCase.findUnique({
     where: { id: args.caseId },

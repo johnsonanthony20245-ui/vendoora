@@ -81,7 +81,7 @@ describe('resolveTrustCase', () => {
     expect(tc?.status).toBe('RESOLVED');
     expect(tc?.resolution_action).toBe('WARNING_ISSUED');
     expect(tc?.resolution_summary).toBe('Warned the driver; monitoring next 30 days.');
-    expect(tc?.resolved_at).not.toBeNull();
+    expect(tc?.resolved_at?.toISOString()).toBe(NOW.toISOString());
 
     const audit = await prisma.auditLog.findFirst({
       where: { action: 'trust_case.resolved', resource_id: id },
@@ -124,5 +124,31 @@ describe('resolveTrustCase', () => {
       now: NOW,
     });
     expect(r).toEqual({ ok: false, reason: 'already_resolved' });
+  });
+
+  it('resolves a case from a mid-review status (MONITORING)', async () => {
+    const id = await makeCase('MONITORING');
+    const r = await resolveTrustCase(prisma, {
+      caseId: id,
+      resolution: 'RESTORED',
+      summary: 'Reviewed; subject back in good standing.',
+      actorUserId: actorId,
+      now: NOW,
+    });
+    expect(r).toEqual({ ok: true, caseId: id });
+    expect((await prisma.trustCase.findUnique({ where: { id } }))?.status).toBe('RESOLVED');
+  });
+
+  it('rejects an unknown resolution action (untyped caller)', async () => {
+    const id = await makeCase('NEW');
+    const r = await resolveTrustCase(prisma, {
+      caseId: id,
+      resolution: 'BOGUS_ACTION' as never,
+      summary: 'should not apply',
+      actorUserId: actorId,
+      now: NOW,
+    });
+    expect(r).toEqual({ ok: false, reason: 'invalid_resolution' });
+    expect((await prisma.trustCase.findUnique({ where: { id } }))?.status).toBe('NEW');
   });
 });
