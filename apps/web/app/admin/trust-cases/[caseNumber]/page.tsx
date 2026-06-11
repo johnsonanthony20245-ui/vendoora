@@ -147,6 +147,7 @@ export default async function TrustCaseDetailPage({ params, searchParams }: Page
             </ul>
           )}
 
+          {admin.kind === 'clerk' ? (
           <form action={addTrustCaseNoteAction} className="mt-5 border-t border-neutral-200 pt-5">
             <input type="hidden" name="caseId" value={tc.id} />
             <input type="hidden" name="caseNumber" value={tc.case_number} />
@@ -180,6 +181,11 @@ export default async function TrustCaseDetailPage({ params, searchParams }: Page
               </button>
             </div>
           </form>
+          ) : (
+            <p className="mt-5 border-t border-neutral-200 pt-5 text-sm text-neutral-500">
+              Adding notes requires a Clerk admin session — dev sessions cannot author notes.
+            </p>
+          )}
         </section>
 
         {isOpen ? (
