@@ -110,10 +110,14 @@ export default async function TrustCaseDetailPage({ params, searchParams }: Page
             <input type="hidden" name="caseId" value={tc.id} />
             <input type="hidden" name="caseNumber" value={tc.case_number} />
 
-            <label className="mt-4 block text-xs font-bold uppercase tracking-widest text-neutral-600">
+            <label
+              htmlFor="resolution"
+              className="mt-4 block text-xs font-bold uppercase tracking-widest text-neutral-600"
+            >
               Resolution
             </label>
             <select
+              id="resolution"
               name="resolution"
               required
               defaultValue=""
@@ -129,10 +133,14 @@ export default async function TrustCaseDetailPage({ params, searchParams }: Page
               ))}
             </select>
 
-            <label className="mt-4 block text-xs font-bold uppercase tracking-widest text-neutral-600">
+            <label
+              htmlFor="summary"
+              className="mt-4 block text-xs font-bold uppercase tracking-widest text-neutral-600"
+            >
               Summary
             </label>
             <textarea
+              id="summary"
               name="summary"
               required
               minLength={10}
