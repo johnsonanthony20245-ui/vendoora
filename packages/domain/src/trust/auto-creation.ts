@@ -17,8 +17,8 @@ import { type Prisma, type PrismaClient } from '@vendoora/db';
  * auto_creation_signal) WHERE the case is open) is a tracked follow-up.
  *
  * This file is the rule registry. Each rule finds tripping subjects and calls
- * openCaseIfAbsent. Rules so far: driver delivery failures, stale KYC, buyer
- * order velocity. More (dispute pattern vs. a seller) slot in the same way.
+ * openCaseIfAbsent. Rules: driver delivery failures, stale KYC, buyer order
+ * velocity, dispute pattern against a seller.
  */
 
 type Db = PrismaClient;
@@ -39,6 +39,7 @@ const DEFAULTS = {
   kycStaleDays: 7,
   velocityWindowHours: 24,
   velocityOrderThreshold: 10,
+  sellerDisputeThreshold: 5,
   caseSlaDays: 3,
 } as const;
 
@@ -64,6 +65,7 @@ export interface FraudScanArgs {
   kycStaleDays?: number;
   velocityWindowHours?: number;
   velocityOrderThreshold?: number;
+  sellerDisputeThreshold?: number;
 }
 
 function makeCaseNumber(now: Date): string {
@@ -257,6 +259,43 @@ export async function runFraudScan(db: Db, args: FraudScanArgs = {}): Promise<Fr
         subject_id: buyerId,
         order_count: orderCount,
         window_hours: velocityWindowHours,
+      },
+    });
+    if (c) created.push(c);
+  }
+
+  // ── Rule: repeated disputes against the same seller ──────────────────────────
+  // A dispute is attributed to every seller with an item on the disputed order
+  // (multi-seller orders implicate each), but counts at most once per seller per
+  // dispute. Windowed on initiated_at — immutable, so no updated_at proxy caveat.
+  const sellerDisputeThreshold = args.sellerDisputeThreshold ?? DEFAULTS.sellerDisputeThreshold;
+  const windowDisputes = await db.dispute.findMany({
+    where: { initiated_at: { gte: since, lte: now } },
+    select: { id: true, order: { select: { items: { select: { seller_id: true } } } } },
+  });
+  const disputesBySeller = new Map<string, number>();
+  for (const d of windowDisputes) {
+    const sellers = new Set(d.order.items.map((i) => i.seller_id));
+    for (const sellerId of sellers) {
+      disputesBySeller.set(sellerId, (disputesBySeller.get(sellerId) ?? 0) + 1);
+    }
+  }
+  for (const [sellerId, disputeCount] of disputesBySeller) {
+    if (disputeCount < sellerDisputeThreshold) continue;
+    const severity: 'MEDIUM' | 'HIGH' = disputeCount >= sellerDisputeThreshold * 2 ? 'HIGH' : 'MEDIUM';
+    const c = await openCaseIfAbsent(db, now, dueDate, {
+      subjectType: 'SELLER',
+      subjectId: sellerId,
+      signal: 'dispute_pattern_seller',
+      severity,
+      title: `Repeated disputes — seller ${sellerId}`,
+      summary: `${disputeCount} disputes in the last ${windowDays} days (threshold ${sellerDisputeThreshold}).`,
+      audit: {
+        signal: 'dispute_pattern_seller',
+        subject_type: 'SELLER',
+        subject_id: sellerId,
+        dispute_count: disputeCount,
+        window_days: windowDays,
       },
     });
     if (c) created.push(c);
