@@ -2,7 +2,7 @@
  * Trust-case auto-creation engine (packages/domain/src/trust/auto-creation.ts:
  * runFraudScan). §5.1.11: risk rules scan recent activity and open a TrustCase
  * per tripping subject, idempotently. Rules covered: driver delivery failures,
- * stale KYC applications, and buyer order velocity.
+ * stale KYC applications, buyer order velocity, and repeated disputes vs a seller.
  *
  * The scan is GLOBAL, so each test asserts on its own subject's resulting case
  * (via subject_id), never on a global created-count.
@@ -180,7 +180,7 @@ async function velCaseFor(buyerId: string) {
   });
 }
 
-async function makeSellerWithDisputes(opts: { count: number; daysAgo?: number }): Promise<string> {
+async function makeSeller(): Promise<{ sellerId: string; productId: string }> {
   const t = randomUUID().slice(0, 8);
   const u = await prisma.user.create({
     data: {
@@ -219,57 +219,66 @@ async function makeSellerWithDisputes(opts: { count: number; daysAgo?: number })
     select: { id: true },
   });
   productIds.push(product.id);
+  return { sellerId: seller.id, productId: product.id };
+}
 
-  const initiatedAt = new Date(NOW.getTime() - (opts.daysAgo ?? 1) * DAY);
-  for (let i = 0; i < opts.count; i++) {
-    const o = await prisma.order.create({
-      data: {
-        order_number: `VDR-SD-${randomUUID().slice(0, 8).toUpperCase()}`,
-        buyer_user_id: buyerUserId,
-        buyer_type: 'LIBERIA_DOMESTIC',
-        buyer_name: 'Buyer',
-        buyer_email: `${TAG}-buyer@vendoora.test`,
-        delivery_address: { street: '1' },
-        delivery_city: 'Monrovia',
-        delivery_country: 'LR',
-        delivery_zone: 'sinkor',
-        subtotal: 50,
-        total_amount: 50,
-        currency: 'USD',
-        payment_method: 'MTN_MOMO',
-        payment_status: 'CAPTURED',
-        status: 'DISPUTED',
-        items: {
-          create: {
-            product_id: product.id,
-            seller_id: seller.id,
-            product_snapshot: {},
-            quantity: 1,
-            unit_price: 50,
-            subtotal: 50,
-            commission_rate: 0.1,
-            commission_amount: 5,
-            seller_net: 45,
-          },
-        },
+/** A DISPUTED order with one line item per entry (entries may repeat a seller). */
+async function makeDisputedOrder(
+  items: { sellerId: string; productId: string }[],
+  daysAgo = 1,
+): Promise<void> {
+  const o = await prisma.order.create({
+    data: {
+      order_number: `VDR-SD-${randomUUID().slice(0, 8).toUpperCase()}`,
+      buyer_user_id: buyerUserId,
+      buyer_type: 'LIBERIA_DOMESTIC',
+      buyer_name: 'Buyer',
+      buyer_email: `${TAG}-buyer@vendoora.test`,
+      delivery_address: { street: '1' },
+      delivery_city: 'Monrovia',
+      delivery_country: 'LR',
+      delivery_zone: 'sinkor',
+      subtotal: 50,
+      total_amount: 50,
+      currency: 'USD',
+      payment_method: 'MTN_MOMO',
+      payment_status: 'CAPTURED',
+      status: 'DISPUTED',
+      items: {
+        create: items.map((it) => ({
+          product_id: it.productId,
+          seller_id: it.sellerId,
+          product_snapshot: {},
+          quantity: 1,
+          unit_price: 50,
+          subtotal: 50,
+          commission_rate: 0.1,
+          commission_amount: 5,
+          seller_net: 45,
+        })),
       },
-      select: { id: true },
-    });
-    sellerOrderIds.push(o.id);
-    await prisma.dispute.create({
-      data: {
-        dispute_number: `DSP-SD-${randomUUID().slice(0, 8).toUpperCase()}`,
-        order_id: o.id,
-        initiated_by_user_id: buyerUserId,
-        category: 'NOT_RECEIVED',
-        reason: 'BUYER_INITIATED',
-        description: 'fixture',
-        sla_due_at: new Date(NOW.getTime() + 48 * 3600 * 1000),
-        initiated_at: initiatedAt,
-      },
-    });
-  }
-  return seller.id;
+    },
+    select: { id: true },
+  });
+  sellerOrderIds.push(o.id);
+  await prisma.dispute.create({
+    data: {
+      dispute_number: `DSP-SD-${randomUUID().slice(0, 8).toUpperCase()}`,
+      order_id: o.id,
+      initiated_by_user_id: buyerUserId,
+      category: 'NOT_RECEIVED',
+      reason: 'BUYER_INITIATED',
+      description: 'fixture',
+      sla_due_at: new Date(NOW.getTime() + 48 * 3600 * 1000),
+      initiated_at: new Date(NOW.getTime() - daysAgo * DAY),
+    },
+  });
+}
+
+async function makeSellerWithDisputes(opts: { count: number; daysAgo?: number }): Promise<string> {
+  const s = await makeSeller();
+  for (let i = 0; i < opts.count; i++) await makeDisputedOrder([s], opts.daysAgo);
+  return s.sellerId;
 }
 
 async function sellerCaseFor(sellerId: string) {
@@ -583,5 +592,35 @@ describe('runFraudScan — repeated disputes against a seller', () => {
     const r = await scan();
     expect(r.created.some((c) => c.subjectId === sellerId)).toBe(false);
     expect(await sellerCaseFor(sellerId)).toBeNull();
+  });
+
+  it('credits every distinct seller on a multi-seller disputed order', async () => {
+    const a = await makeSeller();
+    const b = await makeSeller();
+    for (let i = 0; i < 5; i++) await makeDisputedOrder([a, b]); // each order implicates both
+    await scan();
+    expect(await sellerCaseFor(a.sellerId)).not.toBeNull();
+    expect(await sellerCaseFor(b.sellerId)).not.toBeNull();
+  });
+
+  it('counts a seller once per dispute even with multiple items from that seller', async () => {
+    const s = await makeSeller();
+    // 4 disputed orders, each with TWO items from the same seller. Per-dispute the
+    // seller is counted once (= 4, below threshold 5); counting items would be 8.
+    for (let i = 0; i < 4; i++) await makeDisputedOrder([s, s]);
+    const r = await scan();
+    expect(r.created.some((c) => c.subjectId === s.sellerId)).toBe(false);
+    expect(await sellerCaseFor(s.sellerId)).toBeNull();
+  });
+
+  it('is idempotent — a second scan opens no duplicate seller case', async () => {
+    const sellerId = await makeSellerWithDisputes({ count: 5, daysAgo: 1 });
+    await scan();
+    const r2 = await scan();
+    expect(r2.created.some((c) => c.subjectId === sellerId)).toBe(false);
+    const count = await prisma.trustCase.count({
+      where: { subject_type: 'SELLER', subject_id: sellerId, auto_creation_signal: 'dispute_pattern_seller' },
+    });
+    expect(count).toBe(1);
   });
 });
