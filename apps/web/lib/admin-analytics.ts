@@ -146,3 +146,49 @@ export async function getTopSellers(
     lineItems: g._count.id,
   }));
 }
+
+export interface CategoryGmv {
+  categoryId: string;
+  categoryName: string;
+  gmv: number;
+}
+
+/**
+ * GMV by product category over paid order-items in the window. Prisma can't group
+ * by a relation-of-a-relation, so we group by product_id (bounded to distinct
+ * sold products), resolve each product's category, then fold into categories.
+ */
+export async function getGmvByCategory(
+  db: Db,
+  args: { now?: Date; windowDays?: number } = {},
+): Promise<CategoryGmv[]> {
+  const now = args.now ?? new Date();
+  const windowDays = args.windowDays ?? 30;
+  const since = new Date(now.getTime() - windowDays * 24 * 60 * 60 * 1000);
+
+  const byProduct = await db.orderItem.groupBy({
+    by: ['product_id'],
+    where: { order: { payment_status: 'CAPTURED', paid_at: { gte: since, lte: now } } },
+    _sum: { subtotal: true },
+  });
+  if (byProduct.length === 0) return [];
+
+  const products = await db.product.findMany({
+    where: { id: { in: byProduct.map((p) => p.product_id) } },
+    select: { id: true, category_id: true, category: { select: { name: true } } },
+  });
+  const catByProduct = new Map(products.map((p) => [p.id, { id: p.category_id, name: p.category.name }]));
+
+  const totals = new Map<string, { name: string; gmv: number }>();
+  for (const row of byProduct) {
+    const cat = catByProduct.get(row.product_id);
+    if (!cat) continue;
+    const prev = totals.get(cat.id) ?? { name: cat.name, gmv: 0 };
+    prev.gmv += Number(row._sum.subtotal ?? 0);
+    totals.set(cat.id, prev);
+  }
+
+  return [...totals.entries()]
+    .map(([categoryId, v]) => ({ categoryId, categoryName: v.name, gmv: v.gmv }))
+    .sort((a, b) => b.gmv - a.gmv);
+}
