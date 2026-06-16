@@ -54,8 +54,14 @@ async function makeProduct(categoryId: string): Promise<string> {
   return p.id;
 }
 
-async function makeOrderItem(productId: string, subtotal: number, daysAgo = 1): Promise<void> {
+async function makeOrderItem(
+  productId: string,
+  subtotal: number,
+  daysAgo = 1,
+  paymentStatus: 'CAPTURED' | 'PENDING' = 'CAPTURED',
+): Promise<void> {
   const at = new Date(NOW.getTime() - daysAgo * DAY);
+  const captured = paymentStatus === 'CAPTURED';
   const o = await prisma.order.create({
     data: {
       order_number: `VDR-GC-${randomUUID().slice(0, 8).toUpperCase()}`,
@@ -71,10 +77,10 @@ async function makeOrderItem(productId: string, subtotal: number, daysAgo = 1): 
       total_amount: subtotal,
       currency: 'USD',
       payment_method: 'MTN_MOMO',
-      payment_status: 'CAPTURED',
-      status: 'COMPLETED',
+      payment_status: (captured ? 'CAPTURED' : 'PENDING') as never,
+      status: (captured ? 'COMPLETED' : 'PENDING_PAYMENT') as never,
       created_at: at,
-      paid_at: at,
+      ...(captured ? { paid_at: at } : {}),
       items: {
         create: {
           product_id: productId,
@@ -116,12 +122,15 @@ beforeAll(async () => {
   catA = await makeCategory(`Cat A ${TAG}`);
   catB = await makeCategory(`Cat B ${TAG}`);
   prodA = await makeProduct(catA);
+  const prodA2 = await makeProduct(catA); // a SECOND product in catA
   prodB = await makeProduct(catB);
 
   await makeOrderItem(prodA, 100);
-  await makeOrderItem(prodA, 100); // catA: 200
+  await makeOrderItem(prodA, 100); // prodA: 200
+  await makeOrderItem(prodA2, 100); // prodA2: 100 -> catA folds to 300 across two products
   await makeOrderItem(prodB, 50); // catB: 50
   await makeOrderItem(prodA, 999, 40); // out of window — excluded
+  await makeOrderItem(prodA, 500, 1, 'PENDING'); // unpaid — excluded
 });
 
 afterAll(async () => {
@@ -139,7 +148,9 @@ describe('getGmvByCategory', () => {
     const rows = await getGmvByCategory(prisma, { now: NOW, windowDays: 30 });
     const a = rows.find((r) => r.categoryId === catA);
     const b = rows.find((r) => r.categoryId === catB);
-    expect(a?.gmv).toBe(200); // 100 + 100; not the 40-day-old 999
+    // catA folds two products: prodA (100+100) + prodA2 (100) = 300; excludes the
+    // 40-day-old 999 and the unpaid 500.
+    expect(a?.gmv).toBe(300);
     expect(a?.categoryName).toBe(`Cat A ${TAG}`);
     expect(b?.gmv).toBe(50);
   });
