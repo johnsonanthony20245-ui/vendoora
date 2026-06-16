@@ -85,6 +85,12 @@ export default async function AdminLanding() {
             Trust case queue →
           </Link>
           <Link
+            href="/admin/analytics"
+            className="rounded-lg border border-neutral-300 bg-neutral-0 px-5 py-2.5 text-sm font-semibold text-neutral-900 hover:bg-neutral-100"
+          >
+            Analytics
+          </Link>
+          <Link
             href="/admin/search-insights"
             className="rounded-lg border border-neutral-300 bg-neutral-0 px-5 py-2.5 text-sm font-semibold text-neutral-900 hover:bg-neutral-100"
           >
