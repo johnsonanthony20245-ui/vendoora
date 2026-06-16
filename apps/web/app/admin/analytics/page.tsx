@@ -55,7 +55,7 @@ export default async function AdminAnalyticsPage({ searchParams }: PageProps) {
           <Kpi label="GMV (paid)" value={usd(a.gmv)} tone="emerald" />
           <Kpi label="Paid orders" value={a.paidOrders.toLocaleString()} tone="blue" />
           <Kpi label="Avg order value" value={usd(a.aov)} tone="blue" />
-          <Kpi label="New buyers" value={a.newBuyers.toLocaleString()} tone="blue" />
+          <Kpi label="New signups" value={a.newSignups.toLocaleString()} tone="blue" />
           <Kpi label="Open disputes" value={a.openDisputes.toLocaleString()} tone="amber" />
           <Kpi label="Open trust cases" value={a.openTrustCases.toLocaleString()} tone="red" />
         </div>

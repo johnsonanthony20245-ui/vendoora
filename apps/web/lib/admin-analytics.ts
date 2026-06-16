@@ -7,7 +7,9 @@ import { type PrismaClient } from '@vendoora/db';
  * breakdowns are separate follow-ups.
  *
  * "Paid" = payment_status CAPTURED (money actually taken), consistent with the
- * rest of the domain. GMV sums total_amount over paid orders in the window.
+ * rest of the domain. GMV/paid-orders are windowed by paid_at (revenue recognised
+ * in the window); the funnel, audience split, and signups window by created_at
+ * (when the order was placed / the user joined).
  */
 
 type Db = PrismaClient;
@@ -38,7 +40,7 @@ export interface PlatformAnalytics {
   gmv: number;
   paidOrders: number;
   aov: number;
-  newBuyers: number;
+  newSignups: number;
   openDisputes: number;
   openTrustCases: number;
   funnel: OrderFunnel;
@@ -53,9 +55,9 @@ export async function getPlatformAnalytics(
   const windowDays = args.windowDays ?? 30;
   const since = new Date(now.getTime() - windowDays * 24 * 60 * 60 * 1000);
 
-  const paidInWindow = { payment_status: 'CAPTURED' as const, created_at: { gte: since, lte: now } };
+  const paidInWindow = { payment_status: 'CAPTURED' as const, paid_at: { gte: since, lte: now } };
 
-  const [gmvAgg, paidOrders, newBuyers, statusGroups, audienceGroups, openDisputes, openTrustCases] =
+  const [gmvAgg, paidOrders, newSignups, statusGroups, audienceGroups, openDisputes, openTrustCases] =
     await Promise.all([
       db.order.aggregate({ where: paidInWindow, _sum: { total_amount: true } }),
       db.order.count({ where: paidInWindow }),
@@ -82,7 +84,7 @@ export async function getPlatformAnalytics(
     gmv,
     paidOrders,
     aov: paidOrders > 0 ? gmv / paidOrders : 0,
-    newBuyers,
+    newSignups,
     openDisputes,
     openTrustCases,
     funnel: {

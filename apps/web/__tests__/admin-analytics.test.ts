@@ -40,9 +40,11 @@ async function makeOrder(opts: {
   buyerId: string;
   buyerType: 'LIBERIA_DOMESTIC' | 'DIASPORA';
   total: number;
-  paymentStatus: 'CAPTURED' | 'PENDING';
+  paymentStatus: 'CAPTURED' | 'PENDING' | 'REFUNDED';
   status: string;
+  daysAgo?: number;
 }): Promise<void> {
+  const at = new Date(NOW.getTime() - (opts.daysAgo ?? 1) * 24 * 3600 * 1000);
   const o = await prisma.order.create({
     data: {
       order_number: `VDR-AN-${randomUUID().slice(0, 8).toUpperCase()}`,
@@ -60,7 +62,8 @@ async function makeOrder(opts: {
       payment_method: 'MTN_MOMO',
       payment_status: opts.paymentStatus as never,
       status: opts.status as never,
-      created_at: new Date(NOW.getTime() - 24 * 3600 * 1000),
+      created_at: at,
+      ...(opts.paymentStatus === 'CAPTURED' ? { paid_at: at } : {}),
     },
     select: { id: true },
   });
@@ -87,18 +90,24 @@ describe('getPlatformAnalytics', () => {
     await makeOrder({ buyerId: dia, buyerType: 'DIASPORA', total: 200, paymentStatus: 'CAPTURED', status: 'DISPUTED' });
     // 1 unpaid (pending) — counts in funnel but NOT in GMV/paidOrders
     await makeOrder({ buyerId: dom, buyerType: 'LIBERIA_DOMESTIC', total: 999, paymentStatus: 'PENDING', status: 'PENDING_PAYMENT' });
+    // 1 refunded — in funnel.refunded, NOT in GMV (payment_status not CAPTURED)
+    await makeOrder({ buyerId: dom, buyerType: 'LIBERIA_DOMESTIC', total: 70, paymentStatus: 'REFUNDED', status: 'REFUNDED' });
+    // 1 paid but OUTSIDE the window (paid 40 days ago) — counts in nothing here
+    await makeOrder({ buyerId: dom, buyerType: 'LIBERIA_DOMESTIC', total: 500, paymentStatus: 'CAPTURED', status: 'COMPLETED', daysAgo: 40 });
 
     const after = await getPlatformAnalytics(prisma, { now: NOW, windowDays: 30 });
 
-    expect(after.gmv - before.gmv).toBe(350); // 100 + 50 + 200, not the 999 pending
+    expect(after.gmv - before.gmv).toBe(350); // 100 + 50 + 200; not pending/refunded/out-of-window
     expect(after.paidOrders - before.paidOrders).toBe(3);
-    expect(after.newBuyers - before.newBuyers).toBe(2);
-    expect(after.audience.domestic - before.audience.domestic).toBe(3); // 2 paid + 1 pending
+    expect(after.newSignups - before.newSignups).toBe(2);
+    // in-window domestic: 2 paid + 1 pending + 1 refunded = 4 (the 40-day-old paid order is out of window)
+    expect(after.audience.domestic - before.audience.domestic).toBe(4);
     expect(after.audience.diaspora - before.audience.diaspora).toBe(1);
     expect(after.funnel.delivered - before.funnel.delivered).toBe(1);
     expect(after.funnel.completed - before.funnel.completed).toBe(1);
     expect(after.funnel.disputed - before.funnel.disputed).toBe(1);
     expect(after.funnel.pendingPayment - before.funnel.pendingPayment).toBe(1);
+    expect(after.funnel.refunded - before.funnel.refunded).toBe(1);
   });
 
   it('computes AOV as GMV / paid orders and is non-negative', async () => {
