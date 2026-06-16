@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation';
 import { BRAND_NAME } from '@vendoora/types';
 import { prisma } from '@vendoora/db';
 import { getAdminSession } from '../../../lib/admin';
-import { getPlatformAnalytics, getTopSellers } from '../../../lib/admin-analytics';
+import { getPlatformAnalytics, getTopSellers, getGmvByCategory } from '../../../lib/admin-analytics';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,10 +23,12 @@ export default async function AdminAnalyticsPage({ searchParams }: PageProps) {
 
   const sp = await searchParams;
   const windowDays = sp.days === '7' ? 7 : sp.days === '90' ? 90 : 30;
-  const [a, topSellers] = await Promise.all([
+  const [a, topSellers, gmvByCategory] = await Promise.all([
     getPlatformAnalytics(prisma, { windowDays }),
     getTopSellers(prisma, { windowDays, limit: 10 }),
+    getGmvByCategory(prisma, { windowDays }),
   ]);
+  const categoryMax = Math.max(1, ...gmvByCategory.map((c) => c.gmv));
 
   const funnelRows: { label: string; value: number; tone: string }[] = [
     { label: 'Pending payment', value: a.funnel.pendingPayment, tone: 'bg-neutral-400' },
@@ -134,6 +136,30 @@ export default async function AdminAnalyticsPage({ searchParams }: PageProps) {
                 ))}
               </tbody>
             </table>
+          )}
+        </section>
+
+        <section className="mt-6 rounded-xl border border-neutral-200 bg-neutral-0 p-6">
+          <h2 className="text-sm font-bold uppercase tracking-widest text-neutral-600">GMV by category</h2>
+          {gmvByCategory.length === 0 ? (
+            <p className="mt-4 text-sm text-neutral-500">No paid orders in this window.</p>
+          ) : (
+            <div className="mt-4 space-y-3">
+              {gmvByCategory.slice(0, 12).map((c) => (
+                <div key={c.categoryId}>
+                  <div className="flex justify-between text-xs text-neutral-600">
+                    <span>{c.categoryName}</span>
+                    <span className="font-semibold text-neutral-800">{usd(c.gmv)}</span>
+                  </div>
+                  <div className="mt-1 h-2 overflow-hidden rounded-full bg-neutral-100">
+                    <div
+                      className="h-full bg-emerald-500"
+                      style={{ width: `${Math.round((c.gmv / categoryMax) * 100)}%` }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
         </section>
       </div>
