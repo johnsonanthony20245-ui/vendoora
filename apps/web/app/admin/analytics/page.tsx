@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation';
 import { BRAND_NAME } from '@vendoora/types';
 import { prisma } from '@vendoora/db';
 import { getAdminSession } from '../../../lib/admin';
-import { getPlatformAnalytics } from '../../../lib/admin-analytics';
+import { getPlatformAnalytics, getTopSellers } from '../../../lib/admin-analytics';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,7 +23,10 @@ export default async function AdminAnalyticsPage({ searchParams }: PageProps) {
 
   const sp = await searchParams;
   const windowDays = sp.days === '7' ? 7 : sp.days === '90' ? 90 : 30;
-  const a = await getPlatformAnalytics(prisma, { windowDays });
+  const [a, topSellers] = await Promise.all([
+    getPlatformAnalytics(prisma, { windowDays }),
+    getTopSellers(prisma, { windowDays, limit: 10 }),
+  ]);
 
   const funnelRows: { label: string; value: number; tone: string }[] = [
     { label: 'Pending payment', value: a.funnel.pendingPayment, tone: 'bg-neutral-400' },
@@ -103,6 +106,36 @@ export default async function AdminAnalyticsPage({ searchParams }: PageProps) {
             </div>
           </section>
         </div>
+
+        <section className="mt-6 overflow-hidden rounded-xl border border-neutral-200 bg-neutral-0">
+          <h2 className="border-b border-neutral-200 bg-neutral-50 px-6 py-3 text-sm font-bold uppercase tracking-widest text-neutral-600">
+            Top sellers by net revenue
+          </h2>
+          {topSellers.length === 0 ? (
+            <p className="px-6 py-8 text-center text-sm text-neutral-500">No paid orders in this window.</p>
+          ) : (
+            <table className="w-full text-sm">
+              <thead className="text-left text-xs font-bold uppercase tracking-widest text-neutral-500">
+                <tr>
+                  <th className="px-6 py-2">#</th>
+                  <th className="px-6 py-2">Seller</th>
+                  <th className="px-6 py-2 text-right">Net revenue</th>
+                  <th className="px-6 py-2 text-right">Line items</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-neutral-100">
+                {topSellers.map((s, i) => (
+                  <tr key={s.sellerId}>
+                    <td className="px-6 py-2 text-neutral-500">{i + 1}</td>
+                    <td className="px-6 py-2 font-medium text-neutral-800">{s.businessName}</td>
+                    <td className="px-6 py-2 text-right font-semibold text-neutral-900">{usd(s.gmv)}</td>
+                    <td className="px-6 py-2 text-right text-neutral-600">{s.lineItems.toLocaleString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </section>
       </div>
     </main>
   );
