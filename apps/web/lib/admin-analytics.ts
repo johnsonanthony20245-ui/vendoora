@@ -102,3 +102,47 @@ export async function getPlatformAnalytics(
     },
   };
 }
+
+export interface TopSeller {
+  sellerId: string;
+  businessName: string;
+  gmv: number;
+  lineItems: number;
+}
+
+/**
+ * Top sellers by net revenue (seller_net) over paid order-items in the window.
+ * Ranked descending; `lineItems` is order-item lines, not distinct orders.
+ */
+export async function getTopSellers(
+  db: Db,
+  args: { now?: Date; windowDays?: number; limit?: number } = {},
+): Promise<TopSeller[]> {
+  const now = args.now ?? new Date();
+  const windowDays = args.windowDays ?? 30;
+  const limit = args.limit ?? 10;
+  const since = new Date(now.getTime() - windowDays * 24 * 60 * 60 * 1000);
+
+  const groups = await db.orderItem.groupBy({
+    by: ['seller_id'],
+    where: { order: { payment_status: 'CAPTURED', paid_at: { gte: since, lte: now } } },
+    _sum: { seller_net: true },
+    _count: { id: true },
+    orderBy: { _sum: { seller_net: 'desc' } },
+    take: limit,
+  });
+  if (groups.length === 0) return [];
+
+  const sellers = await db.seller.findMany({
+    where: { id: { in: groups.map((g) => g.seller_id) } },
+    select: { id: true, business_name: true },
+  });
+  const nameById = new Map(sellers.map((s) => [s.id, s.business_name]));
+
+  return groups.map((g) => ({
+    sellerId: g.seller_id,
+    businessName: nameById.get(g.seller_id) ?? '(unknown)',
+    gmv: Number(g._sum.seller_net ?? 0),
+    lineItems: g._count.id,
+  }));
+}
