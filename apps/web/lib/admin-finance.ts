@@ -11,7 +11,14 @@ type Db = PrismaClient;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-/** States where the platform is actively holding buyer funds. */
+/**
+ * States where the platform is actively holding buyer funds. RELEASING is in (the
+ * release is in flight but the money is still in escrow until RELEASED); REFUNDING
+ * is deliberately OUT — a refund-in-flight is treated as already owed back to the
+ * buyer, not platform-held. RELEASED/REFUNDED/EXPIRED/PARTIALLY_REFUNDED/
+ * INSURANCE_PAYOUT are terminal (money has left escrow); PENDING_PAYMENT isn't
+ * captured yet.
+ */
 const HELD_STATES = ['HELD', 'HELD_DISPUTED', 'RELEASING'] as const;
 
 export interface EscrowStateRow {

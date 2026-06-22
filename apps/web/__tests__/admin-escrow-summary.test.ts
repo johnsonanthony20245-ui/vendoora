@@ -80,25 +80,28 @@ describe('getEscrowSummary', () => {
     // Held: 100 (HELD, 0.5d) + 200 (HELD_DISPUTED, 2d) + 50 (RELEASING, 10d) = 350 / 3 holds
     await makeHold({ amount: 100, state: 'HELD', ageDays: 0.5 });
     await makeHold({ amount: 200, state: 'HELD_DISPUTED', ageDays: 2 });
+    await makeHold({ amount: 30, state: 'RELEASING', ageDays: 5 }); // 3-7 days bucket
     await makeHold({ amount: 50, state: 'RELEASING', ageDays: 10 });
-    // Not held (RELEASED / REFUNDED) — excluded from the ledger entirely
+    await makeHold({ amount: 40, state: 'HELD', ageDays: 7 }); // boundary: lte now-7d -> > 7 days
+    // Not held — excluded entirely (terminal states + refund-in-flight)
     await makeHold({ amount: 999, state: 'RELEASED', ageDays: 1 });
     await makeHold({ amount: 999, state: 'REFUNDED', ageDays: 1 });
+    await makeHold({ amount: 999, state: 'REFUNDING', ageDays: 1 });
 
     const after = await getEscrowSummary(prisma, { now: NOW });
 
     // toBeCloseTo for money deltas — Number(Decimal) sums carry float dust.
-    expect(after.totalHeld - before.totalHeld).toBeCloseTo(350); // 100+200+50, not released/refunded
-    expect(after.heldCount - before.heldCount).toBe(3);
+    expect(after.totalHeld - before.totalHeld).toBeCloseTo(420); // not released/refunded/refunding
+    expect(after.heldCount - before.heldCount).toBe(5);
 
     const stateDelta = (state: string) => {
       const a = after.byState.find((r) => r.state === state)?.amount ?? 0;
       const b = before.byState.find((r) => r.state === state)?.amount ?? 0;
       return a - b;
     };
-    expect(stateDelta('HELD')).toBeCloseTo(100);
+    expect(stateDelta('HELD')).toBeCloseTo(140); // 100 + 40 (boundary)
     expect(stateDelta('HELD_DISPUTED')).toBeCloseTo(200);
-    expect(stateDelta('RELEASING')).toBeCloseTo(50);
+    expect(stateDelta('RELEASING')).toBeCloseTo(80); // 30 + 50
 
     const ageDelta = (bucket: string) => {
       const a = after.byAge.find((r) => r.bucket === bucket)?.amount ?? 0;
@@ -107,8 +110,8 @@ describe('getEscrowSummary', () => {
     };
     expect(ageDelta('< 1 day')).toBeCloseTo(100); // the 0.5d hold
     expect(ageDelta('1–3 days')).toBeCloseTo(200); // the 2d hold
-    expect(ageDelta('> 7 days')).toBeCloseTo(50); // the 10d hold
-    expect(ageDelta('3–7 days')).toBeCloseTo(0);
+    expect(ageDelta('3–7 days')).toBeCloseTo(30); // the 5d hold
+    expect(ageDelta('> 7 days')).toBeCloseTo(90); // the 10d hold + the exactly-7d boundary hold
   });
 
   it('age buckets sum to the held total', async () => {
