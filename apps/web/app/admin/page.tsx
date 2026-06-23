@@ -91,6 +91,12 @@ export default async function AdminLanding() {
             Analytics
           </Link>
           <Link
+            href="/admin/finance"
+            className="rounded-lg border border-neutral-300 bg-neutral-0 px-5 py-2.5 text-sm font-semibold text-neutral-900 hover:bg-neutral-100"
+          >
+            Financial control
+          </Link>
+          <Link
             href="/admin/search-insights"
             className="rounded-lg border border-neutral-300 bg-neutral-0 px-5 py-2.5 text-sm font-semibold text-neutral-900 hover:bg-neutral-100"
           >
